@@ -59,15 +59,20 @@ To use numbered lists, you must define a `numbering` config in the Document opti
 
 ## Tables
 
-Tables require strict width definitions.
+Tables require strict width definitions using DXA (twips).
+
+**CRITICAL:** Do NOT use `WidthType.PERCENTAGE` - it produces corrupt OOXML in docx v9.x.
+Always use `WidthType.DXA` with twips (1 inch = 1440 twips).
+
+**Full page width:** 9026 twips (with 1-inch margins on A4)
 
 ```typescript
 import { Table, TableRow, TableCell, WidthType } from "docx";
 
 new Table({
     width: {
-        size: 100,
-        type: WidthType.PERCENTAGE,
+        size: 9026,  // Full page width in twips
+        type: WidthType.DXA,
     },
     rows: [
         new TableRow({
@@ -75,8 +80,8 @@ new Table({
                 new TableCell({
                     children: [new Paragraph("Hello")],
                     width: {
-                        size: 50,
-                        type: WidthType.PERCENTAGE,
+                        size: 4513,  // Half width (9026/2)
+                        type: WidthType.DXA,
                     },
                 }),
             ],
@@ -84,6 +89,8 @@ new Table({
     ],
 });
 ```
+
+**Common widths (twips):** Full=9026, Half=4513, Third=3009, Two-thirds=6017, Quarter=2256
 
 ## Images
 

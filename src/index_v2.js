@@ -53,7 +53,9 @@ async function analyzePageV2(log, imagePath, pageNum) {
     --- CRITICAL FORMATTING RULES ---
     1. **TEXT COLOR:** ALL TextRun objects MUST explicitly set 'color: "000000"'.
     2. **FONTS:** Use "Arial" for all text. Size 22 (11pt) body, larger for headers.
-    3. **TABLES:** ALL Tables MUST have 'width: { size: 100, type: WidthType.PERCENTAGE }'.
+    3. **TABLES:** Use DXA (twips) for widths, NEVER use WidthType.PERCENTAGE:
+       - Table: width: { size: 9026, type: WidthType.DXA } (full page)
+       - Cells: 4513 (half), 3009 (third), 6017 (two-thirds), 2256 (quarter)
     4. **CELLS:** Do NOT set shading/fill for cells. Keep them transparent.
     5. **IMAGES:** If you see an image, insert a placeholder Paragraph "[IMAGE placeholder]".
     
