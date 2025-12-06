@@ -1,0 +1,28 @@
+/* Add these to style.css */
+.options-area {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+.options-area label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.input-field {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    box-sizing: border-box; /* Critical for padding */
+}
+
+.input-field:focus {
+    border-color: var(--primary);
+    outline: none;
+}

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini 3.0 PDF/Docx Converter</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Gemini 3.0 Document Converter</h1>
+            <p>Convert PDF/DOCX to Word with Visual Layout Preservation</p>
+        </header>
+
+        <div class="upload-area" id="drop-zone">
+            <div class="icon">📄</div>
+            <h2>Drag & Drop your file here</h2>
+            <p>or click to browse</p>
+            <input type="file" id="file-input" hidden accept=".pdf,.docx,.doc">
+        </div>
+
+        <div class="options-area">
+            <label for="page-range">Page Range (Optional):</label>
+            <input type="text" id="page-range" placeholder="e.g. 1-5, 10 (Leave empty for all)" class="input-field">
+        </div>
+
+        <div id="progress-container" class="hidden">
+            <div class="spinner"></div>
+            <p id="status-text">Initializing...</p>
+            
+            <!-- NEW: Log Console -->
+            <div class="log-console" id="log-console">
+                <div class="log-entry">Waiting for logs...</div>
+            </div>
+        </div>
+
+        <div id="result-container" class="hidden">
+            <div class="success-icon">✅</div>
+            <h3>Conversion Complete!</h3>
+            <a id="download-btn" href="#" class="btn">Download Word Doc</a>
+            <button id="reset-btn" class="btn secondary">Convert Another</button>
+        </div>
+
+        <footer>
+            Powered by Google Gemini 3.0 Pro & Node.js
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
