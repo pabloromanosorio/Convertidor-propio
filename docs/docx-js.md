@@ -59,30 +59,35 @@ To use numbered lists, you must define a `numbering` config in the Document opti
 
 ## Tables
 
-Tables require strict width definitions using DXA (twips).
+Tables require DXA (twips) width definitions. Use `columnWidths` array at table level + individual cell widths.
 
-**CRITICAL:** Do NOT use `WidthType.PERCENTAGE` - it produces corrupt OOXML in docx v9.x.
-Always use `WidthType.DXA` with twips (1 inch = 1440 twips).
+**CRITICAL:** Use `WidthType.DXA` with twips (1440 = 1 inch). Letter page usable width = 9360 DXA (with 1" margins).
 
-**Full page width:** 9026 twips (with 1-inch margins on A4)
+**Precomputed Column Widths:**
+- **2 equal columns:** `columnWidths: [4680, 4680]`
+- **3 equal columns:** `columnWidths: [3120, 3120, 3120]`
 
 ```typescript
-import { Table, TableRow, TableCell, WidthType } from "docx";
+import { Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType } from "docx";
+
+const tableBorder = { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" };
+const cellBorders = { top: tableBorder, bottom: tableBorder, left: tableBorder, right: tableBorder };
 
 new Table({
-    width: {
-        size: 9026,  // Full page width in twips
-        type: WidthType.DXA,
-    },
+    columnWidths: [4680, 4680], // Set column widths at table level
     rows: [
         new TableRow({
             children: [
                 new TableCell({
-                    children: [new Paragraph("Hello")],
-                    width: {
-                        size: 4513,  // Half width (9026/2)
-                        type: WidthType.DXA,
-                    },
+                    borders: cellBorders,
+                    width: { size: 4680, type: WidthType.DXA },
+                    shading: { fill: "D5E8F0", type: ShadingType.CLEAR }, // ALWAYS use ShadingType.CLEAR
+                    children: [new Paragraph("Cell 1")],
+                }),
+                new TableCell({
+                    borders: cellBorders,
+                    width: { size: 4680, type: WidthType.DXA },
+                    children: [new Paragraph("Cell 2")],
                 }),
             ],
         }),
@@ -90,7 +95,7 @@ new Table({
 });
 ```
 
-**Common widths (twips):** Full=9026, Half=4513, Third=3009, Two-thirds=6017, Quarter=2256
+**CRITICAL:** Always use `ShadingType.CLEAR` for cell shading - never `ShadingType.SOLID` (causes black background).
 
 ## Images
 

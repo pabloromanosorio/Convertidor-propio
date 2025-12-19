@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gemini 3.0 PDF/Docx Converter</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -15,9 +17,9 @@
 
         <div class="upload-area" id="drop-zone">
             <div class="icon">📄</div>
-            <h2>Drag & Drop your file here</h2>
-            <p>or click to browse</p>
-            <input type="file" id="file-input" hidden accept=".pdf,.docx,.doc">
+            <h2>Drag & Drop your file(s) here</h2>
+            <p>or click to browse (multiple files supported)</p>
+            <input type="file" id="file-input" hidden accept=".pdf,.docx,.doc" multiple>
         </div>
 
         <div class="options-area">
@@ -28,7 +30,7 @@
         <div id="progress-container" class="hidden">
             <div class="spinner"></div>
             <p id="status-text">Initializing...</p>
-            
+
             <!-- NEW: Log Console -->
             <div class="log-console" id="log-console">
                 <div class="log-entry">Waiting for logs...</div>
@@ -48,4 +50,5 @@
     </div>
     <script src="script.js"></script>
 </body>
+
 </html>

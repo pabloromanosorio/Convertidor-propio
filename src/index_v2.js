@@ -8,7 +8,7 @@ const { generateDocxV2, executeGeminiCode } = require('./renderer_v2');
 
 // --- CONFIGURATION ---
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: "v1alpha" });
-const MODEL_NAME = "gemini-3-pro-preview"; 
+const MODEL_NAME = "gemini-3-pro-preview";
 
 // Load the Manual
 const DOCX_MANUAL = fs.readFileSync(path.join(__dirname, '../docs/docx-js.md'), 'utf-8');
@@ -25,7 +25,7 @@ function getCachePath(imagePath) {
 
 async function analyzePageV2(log, imagePath, pageNum) {
     const cachePath = getCachePath(imagePath);
-    
+
     // 1. Smart Cache Check
     if (fs.existsSync(cachePath)) {
         try {
@@ -41,7 +41,7 @@ async function analyzePageV2(log, imagePath, pageNum) {
     }
 
     const imageBuffer = fs.readFileSync(imagePath).toString('base64');
-    
+
     const prompt = `
     You are an expert developer using the 'docx' (JavaScript) library.
     Your task is to write a valid JavaScript code snippet that defines an array of document children (Paragraphs, Tables) to visually replicate the provided image.
@@ -53,11 +53,25 @@ async function analyzePageV2(log, imagePath, pageNum) {
     --- CRITICAL FORMATTING RULES ---
     1. **TEXT COLOR:** ALL TextRun objects MUST explicitly set 'color: "000000"'.
     2. **FONTS:** Use "Arial" for all text. Size 22 (11pt) body, larger for headers.
-    3. **TABLES:** Use DXA (twips) for widths, NEVER use WidthType.PERCENTAGE:
-       - Table: width: { size: 9026, type: WidthType.DXA } (full page)
-       - Cells: 4513 (half), 3009 (third), 6017 (two-thirds), 2256 (quarter)
-    4. **CELLS:** Do NOT set shading/fill for cells. Keep them transparent.
+    3. **TABLES:** Use DXA (twips) widths with columnWidths array:
+       - columnWidths: [4680, 4680] for 2 cols, [3120, 3120, 3120] for 3 cols
+       - Cell width: { size: 4680, type: WidthType.DXA }
+       - ALWAYS use ShadingType.CLEAR if setting cell shading
+    4. **CELLS:** If shading needed, use: shading: { fill: "FFFFFF", type: ShadingType.CLEAR }
     5. **IMAGES:** If you see an image, insert a placeholder Paragraph "[IMAGE placeholder]".
+    6. **LISTS - CRITICAL:** Do NOT use numbering, numPr, bullet, or ListParagraph features.
+       Instead, create lists manually using plain Paragraphs with the number/bullet as text:
+       - For numbered: new Paragraph({ children: [new TextRun({ text: "1. First item", ... })] })
+       - For bullets: new Paragraph({ children: [new TextRun({ text: "• Item", ... })] })
+    
+    --- CRITICAL TABLE HANDLING RULES ---
+    ⚠️ **IMPORTANT FOR LONG TABLES:**
+    - First, COUNT the total number of rows visible in the table
+    - Then, carefully create a TableRow for EVERY SINGLE ROW you counted
+    - DO NOT skip any rows, even if the table is very long or continues off the visible page
+    - If a table has 20 rows, your code MUST have exactly 20 TableRow objects
+    - Double-check your row count before generating the code
+    - Include ALL data cells, even if text is small or partially visible
     
     --- OUTPUT REQUIREMENTS ---
     1. Output ONLY valid JavaScript code. No explanation text outside code blocks.
@@ -73,7 +87,7 @@ async function analyzePageV2(log, imagePath, pageNum) {
     `;
 
     const requestId = Math.random().toString(36).substring(7);
-    
+
     // 2. Auto-Retry Loop (Self-Healing)
     let attempts = 0;
     const MAX_RETRIES = 3;
@@ -81,24 +95,24 @@ async function analyzePageV2(log, imagePath, pageNum) {
     while (attempts < MAX_RETRIES) {
         attempts++;
         log(`🧠 [Page ${pageNum}] [Req: ${requestId}] Sending to Gemini 3.0 (Attempt ${attempts}/${MAX_RETRIES})...`);
-        
+
         try {
             const response = await client.models.generateContent({
                 model: MODEL_NAME,
                 contents: [
-                    { 
-                        role: "user", 
+                    {
+                        role: "user",
                         parts: [
-                            { text: prompt }, 
-                            { 
-                                inlineData: { mimeType: "image/png", data: imageBuffer }, 
-                                mediaResolution: { level: "media_resolution_medium" } 
+                            { text: prompt },
+                            {
+                                inlineData: { mimeType: "image/png", data: imageBuffer },
+                                mediaResolution: { level: "media_resolution_medium" }
                             }
                         ]
                     }
                 ],
                 config: {
-                    thinkingConfig: { 
+                    thinkingConfig: {
                         includeThoughts: true,
                         thinkingLevel: "HIGH"
                     },
@@ -106,11 +120,22 @@ async function analyzePageV2(log, imagePath, pageNum) {
                 }
             });
 
+            // Defensive checks for API response
+            if (!response || !response.candidates || response.candidates.length === 0) {
+                throw new Error("Gemini returned empty response (possible rate limit or content block)");
+            }
+
             const candidate = response.candidates[0];
+
+            if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+                const reason = candidate.finishReason || "unknown";
+                throw new Error(`Gemini blocked/empty content (reason: ${reason})`);
+            }
+
             // Find non-thought part
             let textPart = candidate.content.parts.find(p => !p.thought);
             if (!textPart) textPart = candidate.content.parts[candidate.content.parts.length - 1];
-            
+
             const code = textPart.text;
 
             // 3. VALIDATION STEP
@@ -145,14 +170,14 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
         log(`🚀 [V2] Starting Code-Generation Conversion for ${inputFile} (Pages: ${pageRange || 'All'})...`);
         const pdfPath = await normalizeToPdf(inputFile);
         const images = await pdfToImages(pdfPath, pageRange);
-        
+
         const BATCH_SIZE = 3; // Safe starting point for Paid Tier (approx 10 RPM limit)
         const allChildrenCode = new Array(images.length); // Pre-allocate to maintain order
 
         // Process in batches
         for (let i = 0; i < images.length; i += BATCH_SIZE) {
             const batch = images.slice(i, i + BATCH_SIZE);
-            log(`... Processing Batch ${Math.floor(i/BATCH_SIZE) + 1} (Pages ${i+1}-${Math.min(i+BATCH_SIZE, images.length)})...`);
+            log(`... Processing Batch ${Math.floor(i / BATCH_SIZE) + 1} (Pages ${i + 1}-${Math.min(i + BATCH_SIZE, images.length)})...`);
 
             // Map batch to promises
             const promises = batch.map((imagePath, index) => {
@@ -170,7 +195,7 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
 
             // Wait for ALL in this batch
             const results = await Promise.all(promises);
-            
+
             // Store results in correct order
             results.forEach(r => {
                 if (r.code) allChildrenCode[r.index] = r.code;
@@ -189,7 +214,7 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
         log("... Executing Generated Code...");
         const { executeGeminiCode } = require('./renderer_v2');
         const { Document, Packer } = require('docx');
-        
+
         let finalChildren = [];
         // validCode is now array of strings? No, I updated it to be filter(c => c).
         // Wait, the batch logic returned { index, code }.
@@ -197,7 +222,7 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
         // 'const validCode = allChildrenCode.filter(c => c !== null && c !== undefined);'
         // 'allChildrenCode' was populated with 'r.code' which IS THE STRING.
         // So we lost the index mapping in 'validCode'.
-        
+
         // Fix: Iterate over allChildrenCode with index
         for (let i = 0; i < allChildrenCode.length; i++) {
             const code = allChildrenCode[i];
@@ -209,7 +234,7 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
                 // Add a page break between pages?
                 // finalChildren.push(new Paragraph({ children: [new PageBreak()] })); 
             } catch (execErr) {
-                log(`❌ Failed to render Page ${i+1}: ${execErr.message}. Content skipped.`);
+                log(`❌ Failed to render Page ${i + 1}: ${execErr.message}. Content skipped.`);
                 // Optional: Delete cache for this page?
                 // We don't have the image path here easily to delete the cache.
                 // But at least the process won't crash entirely!
@@ -219,16 +244,40 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
         // Generate Final Doc
         log("... Packing Document...");
         const doc = new Document({
+            creator: "Gemini PDF Converter",
+            description: "Converted from PDF",
+            title: path.basename(inputFile, path.extname(inputFile)),
+            // Word-compatible settings
+            compatibility: {
+                doNotExpandShiftReturn: true,
+                growAutofit: true,
+            },
             sections: [{
+                properties: {
+                    page: {
+                        size: {
+                            // Letter size: 8.5in x 11in (in twips: 1 inch = 1440 twips)
+                            width: 12240,  // 8.5 * 1440
+                            height: 15840, // 11 * 1440
+                        },
+                        margin: {
+                            top: 1440,    // 1 inch
+                            right: 1440,  // 1 inch
+                            bottom: 1440, // 1 inch
+                            left: 1440,   // 1 inch
+                        },
+                    },
+                },
                 children: finalChildren
             }]
         });
 
-        const timestamp = Date.now();
-        const outputPath = path.join(outputDir || path.dirname(inputFile), `Converted_V2_${timestamp}.docx`);
+        // Use original filename (remove extension, add _converted suffix)
+        const inputBasename = path.basename(inputFile, path.extname(inputFile));
+        const outputPath = path.join(outputDir || path.dirname(inputFile), `${inputBasename}_converted.docx`);
         const buffer = await Packer.toBuffer(doc);
         fs.writeFileSync(outputPath, buffer);
-        
+
         log(`🎉 V2 Conversion Success! Saved to ${path.basename(outputPath)}`);
         return outputPath;
 
