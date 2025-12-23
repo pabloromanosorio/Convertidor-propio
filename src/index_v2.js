@@ -1,14 +1,13 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { GoogleGenAI } = require('@google/genai');
 const { normalizeToPdf } = require('./input');
 const { pdfToImages } = require('./middleware');
 const { generateDocxV2, executeGeminiCode } = require('./renderer_v2');
+const { generateWithVision, MODELS, getConfiguredProviders } = require('./providers');
 
 // --- CONFIGURATION ---
-const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: "v1alpha" });
-const MODEL_NAME = "gemini-3-pro-preview";
+const DEFAULT_MODEL = 'gemini-3-pro'; // Can be overridden per request
 
 // Load the Manual
 const DOCX_MANUAL = fs.readFileSync(path.join(__dirname, '../docs/docx-js.md'), 'utf-8');
@@ -23,8 +22,8 @@ function getCachePath(imagePath) {
     return path.join(__dirname, '../temp_code', `${hash}.js`);
 }
 
-async function analyzePageV2(log, imagePath, pageNum) {
-    const cachePath = getCachePath(imagePath);
+async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) {
+    const cachePath = getCachePath(imagePath + modelKey); // Include model in cache key
 
     // 1. Smart Cache Check
     if (fs.existsSync(cachePath)) {
@@ -58,17 +57,29 @@ async function analyzePageV2(log, imagePath, pageNum) {
        - Cell width: { size: 4680, type: WidthType.DXA }
        - ALWAYS use ShadingType.CLEAR if setting cell shading
     4. **CELLS:** If shading needed, use: shading: { fill: "FFFFFF", type: ShadingType.CLEAR }
-    5. **IMAGES:** If you see an image, insert a placeholder Paragraph "[IMAGE placeholder]".
+    5. **IMAGES/SIGNATURES:**
+       - If you see a **SIGNATURE**, insert a Paragraph with text "[Signature]".
+       - If you see a **SEAL/STAMP**, insert a Paragraph with text "[Seal: <text content of seal>]".
+       - DO NOT create generic placeholders like "[Image]" for other graphics. Ignore them unless they contain readable text.
     6. **LISTS - CRITICAL:** Do NOT use numbering, numPr, bullet, or ListParagraph features.
        Instead, create lists manually using plain Paragraphs with the number/bullet as text:
        - For numbered: new Paragraph({ children: [new TextRun({ text: "1. First item", ... })] })
        - For bullets: new Paragraph({ children: [new TextRun({ text: "• Item", ... })] })
     
+    --- CRITICAL TEXT EXTRACTION RULES (GLOBAL) ---
+    1. **NO TRUNCATION:** NEVER shorten long text with "..." or ellipses. Write the FULL text exactly as it appears in the image.
+    2. **VERBATIM:** Do not interpret, summarize, or correct grammar. act as a strict OCR machine for text content.
+    3. **LONG STRINGS:** If a cell or line contains a long name (e.g. Course Title, Description), type the WHOLE string, no matter how long.
+
     --- CRITICAL TABLE HANDLING RULES ---
-    ⚠️ **IMPORTANT FOR LONG TABLES:**
-    - First, COUNT the total number of rows visible in the table
-    - Then, carefully create a TableRow for EVERY SINGLE ROW you counted
-    - DO NOT skip any rows, even if the table is very long or continues off the visible page
+    1. **MERGED CELLS:** Identify headers or cells that span multiple columns or rows.
+       - Use \`columnSpan: N\` (e.g., \`columnSpan: 2\`) for cells spreading horizontally.
+       - Use \`rowSpan: N\` (e.g., \`rowSpan: 2\`) for cells spreading vertically.
+       - Ensure the grid structure remains consistent.
+    2. **ROW DISCIPLINE:**
+       - First, COUNT the total number of rows visible in the table.
+       - Create a TableRow for EVERY SINGLE ROW you counted.
+       - DO NOT skip any rows, even if the table is very long.
     - If a table has 20 rows, your code MUST have exactly 20 TableRow objects
     - Double-check your row count before generating the code
     - Include ALL data cells, even if text is small or partially visible
@@ -87,6 +98,7 @@ async function analyzePageV2(log, imagePath, pageNum) {
     `;
 
     const requestId = Math.random().toString(36).substring(7);
+    const modelName = MODELS[modelKey]?.name || modelKey;
 
     // 2. Auto-Retry Loop (Self-Healing)
     let attempts = 0;
@@ -94,49 +106,11 @@ async function analyzePageV2(log, imagePath, pageNum) {
 
     while (attempts < MAX_RETRIES) {
         attempts++;
-        log(`🧠 [Page ${pageNum}] [Req: ${requestId}] Sending to Gemini 3.0 (Attempt ${attempts}/${MAX_RETRIES})...`);
+        log(`🧠 [Page ${pageNum}] [Req: ${requestId}] Sending to ${modelName} (Attempt ${attempts}/${MAX_RETRIES})...`);
 
         try {
-            const response = await client.models.generateContent({
-                model: MODEL_NAME,
-                contents: [
-                    {
-                        role: "user",
-                        parts: [
-                            { text: prompt },
-                            {
-                                inlineData: { mimeType: "image/png", data: imageBuffer },
-                                mediaResolution: { level: "media_resolution_medium" }
-                            }
-                        ]
-                    }
-                ],
-                config: {
-                    thinkingConfig: {
-                        includeThoughts: true,
-                        thinkingLevel: "HIGH"
-                    },
-                    temperature: 0.1 + (attempts * 0.1) // Increase temp slightly on retries to get different results
-                }
-            });
-
-            // Defensive checks for API response
-            if (!response || !response.candidates || response.candidates.length === 0) {
-                throw new Error("Gemini returned empty response (possible rate limit or content block)");
-            }
-
-            const candidate = response.candidates[0];
-
-            if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
-                const reason = candidate.finishReason || "unknown";
-                throw new Error(`Gemini blocked/empty content (reason: ${reason})`);
-            }
-
-            // Find non-thought part
-            let textPart = candidate.content.parts.find(p => !p.thought);
-            if (!textPart) textPart = candidate.content.parts[candidate.content.parts.length - 1];
-
-            const code = textPart.text;
+            // Use unified provider API
+            const code = await generateWithVision(modelKey, prompt, imageBuffer, log);
 
             // 3. VALIDATION STEP
             try {
@@ -160,14 +134,16 @@ async function analyzePageV2(log, imagePath, pageNum) {
         }
     }
 }
-async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
+async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, modelKey = DEFAULT_MODEL) {
     const log = (msg) => {
         console.log(msg);
         if (logCallback) logCallback(msg);
     };
 
     try {
-        log(`🚀 [V2] Starting Code-Generation Conversion for ${inputFile} (Pages: ${pageRange || 'All'})...`);
+        const modelName = MODELS[modelKey]?.name || modelKey;
+        log(`🚀 [V2] Starting Code-Generation Conversion for ${inputFile}`);
+        log(`📊 Model: ${modelName} | Pages: ${pageRange || 'All'}`);
         const pdfPath = await normalizeToPdf(inputFile);
         const images = await pdfToImages(pdfPath, pageRange);
 
@@ -182,7 +158,7 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback) {
             // Map batch to promises
             const promises = batch.map((imagePath, index) => {
                 const pageNum = i + index + 1;
-                return analyzePageV2(log, imagePath, pageNum)
+                return analyzePageV2(log, imagePath, pageNum, modelKey)
                     .then(code => {
                         log(`✅ Page ${pageNum} Analysis Complete`);
                         return { index: i + index, code };

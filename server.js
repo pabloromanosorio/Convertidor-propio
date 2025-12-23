@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { convertDocumentV2 } = require('./src/index_v2');
+const { getAvailableModels, getConfiguredProviders } = require('./src/providers');
 
 const app = express();
 const PORT = 3002;
@@ -74,21 +75,23 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
     }
 
     const inputPath = req.file.path;
-    const pageRange = req.body.pageRange || null; // Get page range from form data
-    
+    const pageRange = req.body.pageRange || null;
+    const model = req.body.model || 'gemini-3-pro'; // Default model
+
     broadcastLog(`📂 Received file: ${req.file.originalname}`);
     if (pageRange) broadcastLog(`📄 Pages selected: ${pageRange}`);
+    broadcastLog(`🤖 Model: ${model}`);
 
     try {
-        // Update signature: inputFile, pageRange, outputDir, callback
+        // Pass model as 5th argument
         const outputPath = await convertDocumentV2(inputPath, pageRange, outputDir, (msg) => {
             broadcastLog(msg);
-        });
+        }, model);
         const outputFilename = path.basename(outputPath);
-        
-        res.json({ 
-            success: true, 
-            downloadUrl: `/download/${outputFilename}` 
+
+        res.json({
+            success: true,
+            downloadUrl: `/download/${outputFilename}`
         });
 
     } catch (error) {
@@ -107,6 +110,18 @@ app.get('/download/:filename', (req, res) => {
     } else {
         res.status(404).send("File not found");
     }
+});
+
+// API Endpoint: Get Available Models
+app.get('/api/models', (req, res) => {
+    const models = getAvailableModels();
+    const configuredProviders = getConfiguredProviders();
+    res.json({
+        models,
+        configuredProviders,
+        // Helper: filter to just configured provider models
+        availableModels: models.filter(m => configuredProviders.includes(m.provider))
+    });
 });
 
 // Start Server
