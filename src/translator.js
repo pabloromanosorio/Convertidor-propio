@@ -217,7 +217,8 @@ function createSemanticChunks(blocks) {
             currentChunk = {
                 blocks: [],
                 totalChars: 0,
-                contextFromPrevious: lastBlock.fullText.substring(0, CONTEXT_OVERLAP_CHARS),
+                // FIXED: Get the END of the previous block (suffix)
+                contextFromPrevious: lastBlock.fullText.slice(-CONTEXT_OVERLAP_CHARS),
                 contextToNext: null
             };
         }
@@ -236,8 +237,8 @@ function createSemanticChunks(blocks) {
         const nextChunk = chunks[i + 1];
         const firstBlock = nextChunk.blocks[0];
 
-        // Take last CONTEXT_OVERLAP_CHARS from first block of next chunk
-        const contextText = firstBlock.fullText.substring(firstBlock.fullText.length - CONTEXT_OVERLAP_CHARS);
+        // FIXED: Take the START of the first block of next chunk (prefix)
+        const contextText = firstBlock.fullText.slice(0, CONTEXT_OVERLAP_CHARS);
         chunks[i].contextToNext = contextText;
     }
 
@@ -364,7 +365,7 @@ CRITICAL FORMAT RULES (IMMUTABLE):
             contextSection += `\n[CONTEXT FROM NEXT SECTION]:\n"${chunk.contextToNext}..."`;
         }
         contextSection += '\n======================================================'
-;
+            ;
     }
 
     const prompt = `${baseInstructions}${customSection}${contextSection}
@@ -379,8 +380,8 @@ Check your output ensures every single ID from input is present in output.`;
 
     log(`📝 Translating chunk ${chunkIndex + 1}/${totalChunks} (${expectedCount} segments) [JSON Mode]...`);
 
-    // GUARDRAIL: Retry logic (up to 3 attempts)
-    const MAX_RETRIES = 3;
+    // GUARDRAIL: Retry logic (up to 5 attempts for better coverage)
+    const MAX_RETRIES = 5;
     let translations = new Map();
     let usage = { input: 0, output: 0 };
 
@@ -424,11 +425,17 @@ Check your output ensures every single ID from input is present in output.`;
 
             // Check coverage
             const coveragePercent = (translations.size / expectedCount) * 100;
-            if (coveragePercent >= 95) { // Stricter requirement for JSON
+            if (coveragePercent >= 90) { // Accept 90% coverage (more lenient than 95%)
+                if (coveragePercent < 100) {
+                    log(`   ⚠️ Got ${translations.size}/${expectedCount} (${coveragePercent.toFixed(1)}%) - proceeding with partial coverage`);
+                }
                 break;
             } else if (attempt < MAX_RETRIES) {
-                log(`   ⚠️ Only got ${translations.size}/${expectedCount} (${coveragePercent.toFixed(0)}%), retrying...`);
+                log(`   ⚠️ Only got ${translations.size}/${expectedCount} (${coveragePercent.toFixed(1)}%), retrying (attempt ${attempt}/${MAX_RETRIES})...`);
                 await new Promise(r => setTimeout(r, 2000));
+            } else {
+                // Final attempt failed
+                log(`   ❌ Final attempt: only ${translations.size}/${expectedCount} (${coveragePercent.toFixed(1)}%) - ${expectedCount - translations.size} segments will remain untranslated`);
             }
         } catch (err) {
             log(`   ❌ Attempt ${attempt} failed: ${err.message}`);
@@ -625,7 +632,7 @@ function patchTranslationsIntoXml(xmlString, allTranslations) {
                     // This prevents "obtainedthe" bug when nodes don't have trailing spaces
                     const isLastNode = i === nonWhiteCount - 1;
                     const nextNodeIsWhitespace = !isLastNode && i + 1 < textNodes.length &&
-                                                textNodes.findIndex((n, idx) => idx > index && n.text.trim().length === 0) === index + 1;
+                        textNodes.findIndex((n, idx) => idx > index && n.text.trim().length === 0) === index + 1;
 
                     if (!isLastNode && !originalTrailing && !nextNodeIsWhitespace) {
                         // Not the last node, no original trailing space, and next node is not whitespace
