@@ -62,6 +62,14 @@
                     Provide instructions for the translation. Include terminology, date/number formats, acronym
                     handling, and any other preferences.
                 </p>
+
+                <div class="preset-controls"
+                    style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+                    <select id="preset-select" class="input-field" style="flex-grow: 1;">
+                        <option value="">-- Load a Saved Prompt --</option>
+                    </select>
+                    <button id="save-preset-btn" class="btn secondary" style="padding: 8px 15px;">💾 Save</button>
+                </div>
                 <textarea id="translation-prompt" class="input-field prompt-textarea" placeholder="Example: 
 - Translate English to Colombian Spanish
 - Keep dates in DD/MM/YYYY format

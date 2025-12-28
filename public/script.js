@@ -47,14 +47,109 @@ resetBtn.addEventListener('click', () => {
 translateToggle.addEventListener('change', () => {
     translationPanel.classList.toggle('hidden', !translateToggle.checked);
 
-    // When translation is enabled, auto-select Gemini 2.5 Pro if available
+    // When translation is enabled, auto-select Gemini 3 Pro if available
     if (translateToggle.checked) {
         const geminiOption = Array.from(modelSelect.options).find(opt =>
-            opt.value.includes('gemini-2.5-pro') || opt.value.includes('gemini-3-pro')
+            opt.value.includes('gemini-3-pro') || opt.value.includes('gemini-2.5-pro')
         );
         if (geminiOption) {
             modelSelect.value = geminiOption.value;
         }
+    }
+});
+
+// ========== PRESETS HANDLING ==========
+let savedPresets = [];
+const presetSelect = document.getElementById('preset-select');
+const savePresetBtn = document.getElementById('save-preset-btn');
+
+async function loadPresets() {
+    try {
+        const response = await fetch('/api/presets');
+        const data = await response.json();
+        savedPresets = data.presets || [];
+
+        // Populate dropdown
+        presetSelect.innerHTML = '<option value="">-- Load a Saved Prompt --</option>';
+        savedPresets.forEach(preset => {
+            const opt = document.createElement('option');
+            opt.value = preset.name;
+            opt.textContent = preset.name;
+            presetSelect.appendChild(opt);
+        });
+    } catch (e) {
+        console.error("Failed to load presets:", e);
+    }
+}
+
+// Load presets on startup
+loadPresets();
+
+// Handle Preset Selection
+presetSelect.addEventListener('change', () => {
+    const selectedName = presetSelect.value;
+    if (!selectedName) return;
+
+    const preset = savedPresets.find(p => p.name === selectedName);
+    if (!preset) return;
+
+    // Favor usage of raw text if available
+    if (preset.customPromptText) {
+        translationPromptInput.value = preset.customPromptText;
+    } else {
+        // Convert legacy structure to text format
+        let text = `- Context: ${preset.name || 'General'}\n`;
+        if (preset.dateFormat) text += `- Date Format: ${preset.dateFormat}\n`;
+        if (preset.numberFormat) text += `- Number Format: ${preset.numberFormat}\n`;
+        if (preset.acronymHandling) text += `- Acronyms: ${preset.acronymHandling}\n`;
+
+        if (preset.glossary && Object.keys(preset.glossary).length > 0) {
+            text += `\nGLOSSARY:\n`;
+            Object.entries(preset.glossary).forEach(([eng, esp]) => {
+                text += `- ${eng}: ${esp}\n`;
+            });
+        }
+        text += `\n- Use formal 'usted' form`;
+
+        translationPromptInput.value = text;
+    }
+});
+
+// Handle Save Preset
+savePresetBtn.addEventListener('click', async () => {
+    const currentText = translationPromptInput.value.trim();
+    if (!currentText) {
+        alert("Please enter some instructions first.");
+        return;
+    }
+
+    const name = prompt("Enter a name for this prompt (e.g. Legal Contract, Company Memo):");
+    if (!name) return;
+
+    try {
+        const response = await fetch('/api/presets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                customPromptText: currentText,
+                // Add empty defaults for backward compatibility if needed, or structured parsing
+                glossary: {},
+                dateFormat: "DD/MM/YYYY"
+            })
+        });
+
+        if (response.ok) {
+            alert("✅ Prompt saved!");
+            loadPresets(); // Reload dropdown
+            // Select the new one
+            setTimeout(() => { presetSelect.value = name; }, 100);
+        } else {
+            alert("Failed to save prompt.");
+        }
+    } catch (e) {
+        console.error("Error saving preset:", e);
+        alert("Error saving preset.");
     }
 });
 
