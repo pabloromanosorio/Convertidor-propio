@@ -20,7 +20,7 @@ const { MODELS } = require('./providers');
 
 // Configuration
 const MAX_CHUNK_CHARS = 12000;  // Target chars per chunk (leaves room for prompt)
-const CONTEXT_OVERLAP_CHARS = 500;  // Include this much from previous chunk for context
+const CONTEXT_OVERLAP_CHARS = 2000;  // Include this much from previous chunk for context (16.7% overlap for better coherence)
 
 /**
  * Semantic block types
@@ -191,14 +191,16 @@ function extractTableStructure(tableXml, tableStartPos) {
 }
 
 /**
- * Create semantic chunks from blocks with context overlap
+ * Create semantic chunks from blocks with bidirectional context overlap
+ * Includes context from BOTH previous AND next chunks for better coherence
  */
 function createSemanticChunks(blocks) {
     const chunks = [];
     let currentChunk = {
         blocks: [],
         totalChars: 0,
-        contextFromPrevious: null
+        contextFromPrevious: null,
+        contextToNext: null  // NEW: bidirectional context
     };
 
     for (let i = 0; i < blocks.length; i++) {
@@ -215,7 +217,8 @@ function createSemanticChunks(blocks) {
             currentChunk = {
                 blocks: [],
                 totalChars: 0,
-                contextFromPrevious: lastBlock.fullText.substring(0, CONTEXT_OVERLAP_CHARS)
+                contextFromPrevious: lastBlock.fullText.substring(0, CONTEXT_OVERLAP_CHARS),
+                contextToNext: null
             };
         }
 
@@ -226,6 +229,16 @@ function createSemanticChunks(blocks) {
     // Don't forget the last chunk
     if (currentChunk.blocks.length > 0) {
         chunks.push(currentChunk);
+    }
+
+    // Second pass: Add context from NEXT chunk (bidirectional)
+    for (let i = 0; i < chunks.length - 1; i++) {
+        const nextChunk = chunks[i + 1];
+        const firstBlock = nextChunk.blocks[0];
+
+        // Take last CONTEXT_OVERLAP_CHARS from first block of next chunk
+        const contextText = firstBlock.fullText.substring(firstBlock.fullText.length - CONTEXT_OVERLAP_CHARS);
+        chunks[i].contextToNext = contextText;
     }
 
     return chunks;
@@ -340,7 +353,21 @@ CRITICAL FORMAT RULES (IMMUTABLE):
         ? `\n\n=== USER CUSTOM INSTRUCTIONS (Prioritize these for style/tone) ===\n${customPrompt}\n======================================================`
         : '';
 
-    const prompt = `${baseInstructions}${customSection}
+    // Add bidirectional context if available
+    let contextSection = '';
+    if (chunk.contextFromPrevious || chunk.contextToNext) {
+        contextSection = '\n\n=== CONTEXT (For Reference Only - Do NOT Translate) ===';
+        if (chunk.contextFromPrevious) {
+            contextSection += `\n[CONTEXT FROM PREVIOUS SECTION]:\n"...${chunk.contextFromPrevious}"`;
+        }
+        if (chunk.contextToNext) {
+            contextSection += `\n[CONTEXT FROM NEXT SECTION]:\n"${chunk.contextToNext}..."`;
+        }
+        contextSection += '\n======================================================'
+;
+    }
+
+    const prompt = `${baseInstructions}${customSection}${contextSection}
 
 INPUT SEGMENTS (JSON):
 ${JSON.stringify(segmentsToTranslate, null, 2)}
