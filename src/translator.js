@@ -108,83 +108,7 @@ function extractSemanticBlocks(xmlString) {
     return blocks;
 }
 
-/**
- * Detect formatting properties from OOXML run
- * Analyzes <w:rPr> (run properties) to identify bold, italic, underline, etc.
- */
-function detectRunFormatting(runXml) {
-    const formatting = {
-        bold: false,
-        italic: false,
-        underline: false
-    };
 
-    // Check for run properties <w:rPr>
-    const rPrMatch = runXml.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/);
-    if (!rPrMatch) return formatting;
-
-    const rPr = rPrMatch[1];
-
-    // Bold: <w:b/> or <w:b w:val="true"/> or <w:b w:val="1"/>
-    formatting.bold = /<w:b[\s\/>]/.test(rPr) || /<w:b\s+w:val="(true|1)"/.test(rPr);
-
-    // Italic: <w:i/> or <w:i w:val="true"/> or <w:i w:val="1"/>
-    formatting.italic = /<w:i[\s\/>]/.test(rPr) || /<w:i\s+w:val="(true|1)"/.test(rPr);
-
-    // Underline: <w:u w:val="..."/> (any underline style)
-    formatting.underline = /<w:u\s+w:val="[^"]*"/.test(rPr);
-
-    return formatting;
-}
-
-/**
- * Analyze formatting across all text nodes in a segment
- * Returns a description to pass to the LLM for format-aware translation
- */
-function analyzeSegmentFormatting(textNodes) {
-    if (!textNodes || textNodes.length === 0) {
-        return { hasFormatting: false };
-    }
-
-    // Collect formatted words from all text nodes
-    const formattedParts = {
-        bold: [],
-        italic: [],
-        underline: []
-    };
-
-    for (const node of textNodes) {
-        if (!node.formatting) continue;
-
-        const trimmedText = node.text.trim();
-        if (trimmedText.length === 0) continue; // Skip whitespace-only nodes
-
-        if (node.formatting.bold) formattedParts.bold.push(trimmedText);
-        if (node.formatting.italic) formattedParts.italic.push(trimmedText);
-        if (node.formatting.underline) formattedParts.underline.push(trimmedText);
-    }
-
-    // Build description
-    const descriptions = [];
-    if (formattedParts.bold.length > 0) {
-        descriptions.push(`bold on "${formattedParts.bold.join(' ')}"`);
-    }
-    if (formattedParts.italic.length > 0) {
-        descriptions.push(`italic on "${formattedParts.italic.join(' ')}"`);
-    }
-    if (formattedParts.underline.length > 0) {
-        descriptions.push(`underline on "${formattedParts.underline.join(' ')}"`);
-    }
-
-    if (descriptions.length === 0) {
-        return { hasFormatting: false };
-    }
-
-    return {
-        hasFormatting: true,
-        description: descriptions.join(', ')
-    };
-}
 
 /**
  * Extract text runs from a paragraph or cell WITH formatting metadata
@@ -203,8 +127,9 @@ function extractTextRunsFromBlock(blockXml, blockStartPos) {
         const runContent = runMatch[1];
         const runStart = runMatch.index;
 
-        // Detect formatting for this run
-        const formatting = detectRunFormatting(runXml);
+        // CRITICAL: Calculate the offset of runContent within runXml
+        // runContent is the capture group (inside <w:r>), so we need to add the opening tag length
+        const openingTagLength = runXml.indexOf(runContent);
 
         // Extract text nodes within this run
         const textRegex = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
@@ -216,11 +141,10 @@ function extractTextRunsFromBlock(blockXml, blockStartPos) {
             if (text !== undefined && text !== null) {
                 texts.push({
                     text: text,
-                    formatting: formatting, // NEW: formatting metadata
-                    localStart: runStart + textMatch.index,
-                    localEnd: runStart + textMatch.index + textMatch[0].length,
-                    globalStart: blockStartPos + runStart + textMatch.index,
-                    globalEnd: blockStartPos + runStart + textMatch.index + textMatch[0].length,
+                    localStart: runStart + openingTagLength + textMatch.index,
+                    localEnd: runStart + openingTagLength + textMatch.index + textMatch[0].length,
+                    globalStart: blockStartPos + runStart + openingTagLength + textMatch.index,
+                    globalEnd: blockStartPos + runStart + openingTagLength + textMatch.index + textMatch[0].length,
                     fullMatch: textMatch[0]
                 });
             }
@@ -409,28 +333,11 @@ async function translateChunk(chunk, chunkIndex, totalChunks, customPrompt, mode
     // For JSON, a flat list of objects with context hints is best.
 
     const segmentsToTranslate = [];
-    let formattedSegmentCount = 0;
     for (const [segIndex, segInfo] of segmentMap) {
-        // Analyze formatting from text nodes
-        const formattingInfo = analyzeSegmentFormatting(segInfo.textNodes);
-
-        const segment = {
+        segmentsToTranslate.push({
             id: segIndex,
             text: segInfo.originalText
-        };
-
-        // Add formatting hints if any formatting detected
-        if (formattingInfo.hasFormatting) {
-            segment.formatting = formattingInfo.description;
-            formattedSegmentCount++;
-        }
-
-        segmentsToTranslate.push(segment);
-    }
-
-    // Log if formatting was detected
-    if (formattedSegmentCount > 0) {
-        log(`   📐 Detected formatting in ${formattedSegmentCount}/${segmentMap.size} segments`);
+        });
     }
 
     // Default instructions with Bi-Directional Logic
@@ -452,21 +359,12 @@ DEFAULT LOGIC (When no user instructions contradict):
 - IF SOURCE IS ENGLISH -> TRANSLATE TO SPANISH (COLOMBIA).
 - FORCE TRANSLATION: Do not just "improve" the text. If it is in the source language, it MUST be changed to the target language.
 
-FORMATTING PRESERVATION (IMPORTANT):
-- Some segments have a "formatting" field indicating text formatting (bold, italic, underline).
-- When translating, apply the SAME formatting to the semantically equivalent words in the target language.
-- Example: If source is "obtuvo las **siguientes** calificaciones" (bold on "siguientes"),
-  translate to "obtained the **following** grades" (bold on "following", the semantic equivalent).
-- Maintain formatting on words that carry the same meaning/emphasis in the translation.
-- If a segment has no "formatting" field, ignore this rule for that segment.
-
 CRITICAL FORMAT RULES (IMMUTABLE):
 1. Output MUST be valid JSON array.
 2. NO markdown formatting (no \`\`\`).
 3. NO intro/outro text. ONLY the JSON array.
 4. Translate ALL segments.
-5. Do NOT translate the "id" field.
-6. Do NOT translate or copy the "formatting" field - it's for reference only.`;
+5. Do NOT translate the "id" field.`;
 
     // Add custom instructions if provided
     const customSection = customPrompt && customPrompt.trim()

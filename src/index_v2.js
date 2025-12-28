@@ -53,15 +53,20 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL, 
     --- CRITICAL FORMATTING RULES ---
     1. **TEXT COLOR:** ALL TextRun objects MUST explicitly set 'color: "000000"' (black text ONLY, regardless of original color).
     2. **FONTS:** Use "Arial" for all text. Size 22 (11pt) body, larger for headers.
-    3. **TABLES:** Use DXA (twips) widths with columnWidths array:
+    3. **BOLD & ITALICS (STRICT):**
+       - You MUST preserve bold and italic formatting exactly as seen in the image.
+       - If text looks bold (thicker weight), set \`bold: true\` in TextRun.
+       - If text looks italic (slanted), set \`italics: true\` in TextRun.
+       - Split TextRuns where formatting changes (e.g., "Normal **Bold** Normal").
+    4. **TABLES:** Use DXA (twips) widths with columnWidths array:
        - columnWidths: [4680, 4680] for 2 cols, [3120, 3120, 3120] for 3 cols
        - Cell width: { size: 4680, type: WidthType.DXA }
-    4. **TABLE CELLS:** NEVER use cell shading. Do NOT add any 'shading' property to table cells regardless of original appearance.
-    5. **IMAGES/SIGNATURES:**
+    5. **TABLE CELLS:** NEVER use cell shading. Do NOT add any 'shading' property to table cells regardless of original appearance.
+    6. **IMAGES/SIGNATURES:**
        - If you see a **SIGNATURE**, insert a Paragraph with text "[Signature]".
        - If you see a **SEAL/STAMP**, insert a Paragraph with text "[Seal: <text content of seal>]".
        - DO NOT create generic placeholders like "[Image]" for other graphics. Ignore them unless they contain readable text.
-    6. **LISTS - CRITICAL:** Do NOT use numbering, numPr, bullet, or ListParagraph features.
+    7. **LISTS - CRITICAL:** Do NOT use numbering, numPr, bullet, or ListParagraph features.
        Instead, create lists manually using plain Paragraphs with the number/bullet as text:
        - For numbered: new Paragraph({ children: [new TextRun({ text: "1. First item", ... })] })
        - For bullets: new Paragraph({ children: [new TextRun({ text: "• Item", ... })] })
@@ -106,7 +111,10 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL, 
     3. Assume all 'docx' classes (Paragraph, TextRun, Table, WidthType, AlignmentType, etc.) are globally available in scope. Do NOT import them.
     4. **RETURN FORMAT:**
        return [
-          new Paragraph({ children: [ new TextRun({ text: "Text", color: "000000", font: "Arial" }) ] }),
+          new Paragraph({ children: [ 
+             new TextRun({ text: "Normal ", color: "000000", font: "Arial" }),
+             new TextRun({ text: "Bold Text", bold: true, color: "000000", font: "Arial" }) 
+          ] }),
           new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, ... })
        ];
 
