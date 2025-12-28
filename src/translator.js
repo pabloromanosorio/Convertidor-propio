@@ -131,9 +131,10 @@ function extractTextRunsFromBlock(blockXml, blockStartPos) {
         // runContent is the capture group (inside <w:r>), so we need to add the opening tag length
         const openingTagLength = runXml.indexOf(runContent);
 
-        // Extract text nodes within this run
-        const textRegex = /<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
-        let textMatch;
+        // Check for formatting
+        const isBold = /<w:b(?:\s|\/|>)/.test(runContent);
+        const isItalic = /<w:i(?:\s|\/|>)/.test(runContent);
+        const isUnderline = /<w:u(?:\s|\/|>)/.test(runContent);
 
         while ((textMatch = textRegex.exec(runContent)) !== null) {
             const text = textMatch[1];
@@ -145,7 +146,8 @@ function extractTextRunsFromBlock(blockXml, blockStartPos) {
                     localEnd: runStart + openingTagLength + textMatch.index + textMatch[0].length,
                     globalStart: blockStartPos + runStart + openingTagLength + textMatch.index,
                     globalEnd: blockStartPos + runStart + openingTagLength + textMatch.index + textMatch[0].length,
-                    fullMatch: textMatch[0]
+                    fullMatch: textMatch[0],
+                    formatting: { bold: isBold, italic: isItalic, underline: isUnderline }
                 });
             }
         }
@@ -263,6 +265,28 @@ function createSemanticChunks(blocks) {
 }
 
 /**
+ * Reconstruct text with formatting tags for LLM prompt
+ */
+function buildTaggedText(textNodes) {
+    if (!textNodes || textNodes.length === 0) return '';
+
+    return textNodes.map(node => {
+        let text = node.text;
+        // Skip empty text
+        if (!text) return '';
+
+        // Wrap with tags if formatting is present
+        // Order: Bold outside, then Italic, then Underline inside (arbitrary but consistent)
+        if (node.formatting) {
+            if (node.formatting.underline) text = `[u]${text}[/u]`;
+            if (node.formatting.italic) text = `[i]${text}[/i]`;
+            if (node.formatting.bold) text = `[b]${text}[/b]`;
+        }
+        return text;
+    }).join('');
+}
+
+/**
  * Format a chunk for LLM translation
  * Presents text in a clear, structured way
  */
@@ -292,7 +316,8 @@ function formatChunkForLLM(chunk, chunkIndex, totalChunks) {
                     for (const textNode of cell.textNodes) {
                         segmentMap.set(segNum, {
                             textNodes: cell.textNodes,
-                            originalText: cell.text
+                            textNodes: cell.textNodes,
+                            originalText: buildTaggedText(cell.textNodes) // Use TAGGED text
                         });
                     }
                     return `[${segNum}] ${cell.text}`;
@@ -308,10 +333,11 @@ function formatChunkForLLM(chunk, chunkIndex, totalChunks) {
             // Map all text nodes in this block
             segmentMap.set(segNum, {
                 textNodes: block.texts,
-                originalText: block.fullText
+                textNodes: block.texts,
+                originalText: buildTaggedText(block.texts) // Use TAGGED text
             });
 
-            formatted += `${prefix}[${segNum}] ${block.fullText}\n\n`;
+            formatted += `${prefix}[${segNum}] ${buildTaggedText(block.texts)}\n\n`;
         }
     }
 
@@ -336,7 +362,7 @@ async function translateChunk(chunk, chunkIndex, totalChunks, customPrompt, mode
     for (const [segIndex, segInfo] of segmentMap) {
         segmentsToTranslate.push({
             id: segIndex,
-            text: segInfo.originalText
+            text: segInfo.originalText // Now contains tags like [b]...[/b]
         });
     }
 
@@ -364,7 +390,11 @@ CRITICAL FORMAT RULES (IMMUTABLE):
 2. NO markdown formatting (no \`\`\`).
 3. NO intro/outro text. ONLY the JSON array.
 4. Translate ALL segments.
-5. Do NOT translate the "id" field.`;
+5. Do NOT translate the "id" field.
+6. **PRESERVE FORMATTING TAGS:** 
+   - You will see tags like [b], [/b], [i], [/i], [u], [/u].
+   - You MUST keep these tags wrapping the equivalent predicted translation.
+   - Example: "Hello [b]World[/b]" -> "Hola [b]Mundo[/b]"`;
 
     // Add custom instructions if provided
     const customSection = customPrompt && customPrompt.trim()
@@ -594,8 +624,31 @@ function patchTranslationsIntoXml(xmlString, allTranslations) {
                     replacement: buildTextTag(node.fullMatch, translation)
                 });
             } else {
-                // Multiple text nodes: distribute translation while preserving spacing
-                // Separate whitespace-only nodes (important for spacing between formatted text!)
+                // Multiple text nodes: distribute translation
+
+                // STRATEGY 1: TAG MASKING (New, Precision Layout)
+                // Attempt to distribute based on matching [b], [i], [u] tags
+                const taggedDistribution = distributeByTags(textNodes, translation);
+
+                if (taggedDistribution) {
+                    // Success! We found matching streams. Apply them.
+                    for (const item of taggedDistribution) {
+                        const posKey = `${item.node.globalStart}-${item.node.globalEnd}`;
+                        if (processedPositions.has(posKey)) continue;
+                        processedPositions.add(posKey);
+
+                        replacements.push({
+                            start: item.node.globalStart,
+                            end: item.node.globalEnd,
+                            original: item.node.fullMatch,
+                            replacement: buildTextTag(item.node.fullMatch, item.text)
+                        });
+                    }
+                    continue; // Done with this segment
+                }
+
+                // STRATEGY 2: RATIO DISTRIBUTION (Fallback, Safe)
+                // Separate whitespace-only nodes (important for spacing!)
                 const nonWhitespaceNodes = [];
                 const whitespaceNodes = [];
 
@@ -897,3 +950,126 @@ module.exports = {
     extractSemanticBlocks,
     createSemanticChunks
 };
+
+/**
+ * Parse text with [b], [i], [u] tags into segments
+ * Returns array: [{ text: "string", tags: Set(['b', 'u']) }]
+ * Handles simple nesting.
+ */
+function parseTaggedText(text) {
+    const segments = [];
+    
+    // Tokenize by tags
+    const tokenRegex = /(\[\/?(?:b|i|u)\])/g;
+    const parts = text.split(tokenRegex);
+    
+    let activeTags = new Set();
+    
+    for (const part of parts) {
+        if (!part) continue;
+        
+        if (/^\[(?:b|i|u)\]$/.test(part)) {
+            // Opening tag
+            const tag = part.slice(1, -1);
+            activeTags.add(tag);
+        } else if (/^\[\/(?:b|i|u)\]$/.test(part)) {
+            // Closing tag
+            const tag = part.slice(2, -1);
+            activeTags.delete(tag);
+        } else {
+            // Text content
+            segments.push({
+                text: part,
+                tags: new Set(activeTags) // Clone current state
+            });
+        }
+    }
+    
+    return segments;
+}
+
+/**
+ * Distribute translation text to nodes based on matching formatting tags
+ * Falls back to ratio distribution if tags don't match well
+ */
+function distributeByTags(textNodes, translation) {
+    // 1. Parse translation into formatted segments
+    const tagSegments = parseTaggedText(translation);
+    
+    // Quick check: If no tags found in translation, return null (trigger fallback)
+    const hasTags = tagSegments.some(s => s.tags.size > 0);
+    if (!hasTags) return null;
+
+    // 2. Prepare text streams
+    const streams = new Map(); // key: "b,u", value: string
+    
+    for (const seg of tagSegments) {
+        const key = Array.from(seg.tags).sort().join(',');
+        const currentText = streams.get(key) || '';
+        streams.set(key, currentText + seg.text);
+    }
+    
+    // 3. Map Original Nodes to calculate totals
+    const streamTotals = new Map(); 
+    
+    for (const node of textNodes) {
+        if (node.text.trim().length === 0) continue;
+        
+        const nodeTags = [];
+        if (node.formatting) {
+            if (node.formatting.bold) nodeTags.push('b');
+            if (node.formatting.italic) nodeTags.push('i');
+            if (node.formatting.underline) nodeTags.push('u');
+        }
+        const key = nodeTags.sort().join(',');
+        
+        const currentTotal = streamTotals.get(key) || 0;
+        streamTotals.set(key, currentTotal + node.text.length);
+    }
+    
+    // 4. Assign text
+    const streamConsumption = new Map();
+    const results = [];
+    
+    for (const node of textNodes) {
+        if (node.text.trim().length === 0) {
+            results.push({ node, text: node.text });
+            continue;
+        }
+        
+        const nodeTags = [];
+        if (node.formatting) {
+            if (node.formatting.bold) nodeTags.push('b');
+            if (node.formatting.italic) nodeTags.push('i');
+            if (node.formatting.underline) nodeTags.push('u');
+        }
+        let key = nodeTags.sort().join(',');
+        
+        // Fallback: If exact stream missing, try 'normal'
+        if (!streams.has(key) || streams.get(key).length === 0) {
+             if (streams.has('')) {
+                 key = '';
+             } else {
+                 return null; // Global fallback
+             }
+        }
+        
+        const streamText = streams.get(key);
+        const streamTotalOrigin = streamTotals.get(key) || 1;
+        const consumedSoFar = streamConsumption.get(key) || 0;
+        
+        const portion = node.text.length / streamTotalOrigin;
+        let targetCharCount = Math.round(portion * streamText.length);
+        
+        // Adjustment for last node of this type? No, simple rounding is okay for MVP
+        
+        let slice = streamText.substr(consumedSoFar, targetCharCount);
+        streamConsumption.set(key, consumedSoFar + slice.length);
+        
+        if (slice.length === 0) slice = ' ';
+        
+        results.push({ node, text: slice });
+    }
+    
+    return results;
+}
