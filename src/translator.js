@@ -680,12 +680,13 @@ function buildTextTag(originalTag, newText) {
  * Escape special XML characters
  */
 function escapeXml(text) {
+    // Only escape actual XML special characters
+    // DO NOT escape quotes/apostrophes - Word XML doesn't use entities for these
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
+        .replace(/>/g, '&gt;');
+    // NOTE: Quotes and apostrophes are NOT escaped in Word XML text nodes
 }
 
 /**
