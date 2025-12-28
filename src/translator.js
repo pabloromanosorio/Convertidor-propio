@@ -621,6 +621,18 @@ function patchTranslationsIntoXml(xmlString, allTranslations) {
                     if (originalLeading) nodeText = originalLeading + nodeText;
                     if (originalTrailing) nodeText = nodeText + originalTrailing;
 
+                    // CRITICAL FIX: Ensure space after each node except the last one
+                    // This prevents "obtainedthe" bug when nodes don't have trailing spaces
+                    const isLastNode = i === nonWhiteCount - 1;
+                    const nextNodeIsWhitespace = !isLastNode && i + 1 < textNodes.length &&
+                                                textNodes.findIndex((n, idx) => idx > index && n.text.trim().length === 0) === index + 1;
+
+                    if (!isLastNode && !originalTrailing && !nextNodeIsWhitespace) {
+                        // Not the last node, no original trailing space, and next node is not whitespace
+                        // Add a space to separate from next node
+                        nodeText = nodeText + ' ';
+                    }
+
                     // Ensure we don't end up with empty content
                     if (!nodeText || nodeText.trim() === '') {
                         nodeText = ' ';
