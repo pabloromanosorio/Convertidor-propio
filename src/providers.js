@@ -10,11 +10,10 @@ const { GoogleGenAI } = require('@google/genai');
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 
-// === AVAILABLE MODELS ===
 const MODELS = {
     // Gemini Models
     'gemini-3-pro': { provider: 'gemini', id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro' },
-    'gemini-2.5-pro': { provider: 'gemini', id: 'gemini-2.5-pro-preview-05-06', name: 'Gemini 2.5 Pro' },
+    'gemini-2.5-pro': { provider: 'gemini', id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
     'gemini-2.0-flash': { provider: 'gemini', id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
 
     // Claude Models (Anthropic)
@@ -42,7 +41,7 @@ function getGeminiClient() {
     if (!geminiClient && process.env.GEMINI_API_KEY) {
         geminiClient = new GoogleGenAI({
             apiKey: process.env.GEMINI_API_KEY,
-            apiVersion: "v1alpha"
+            apiVersion: "v1beta"
         });
     }
     return geminiClient;
@@ -72,7 +71,7 @@ function getOpenAIClient() {
  * @param {string} prompt - Text prompt
  * @param {string} imageBase64 - Base64 encoded image
  * @param {Function} log - Logging function
- * @returns {Promise<string>} - Generated text response
+ * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}}>} - Generated text response with usage
  */
 async function generateWithVision(modelKey, prompt, imageBase64, log = console.log) {
     const model = MODELS[modelKey];
@@ -130,7 +129,14 @@ async function generateGemini(modelId, prompt, imageBase64, log) {
     let textPart = candidate.content.parts.find(p => !p.thought);
     if (!textPart) textPart = candidate.content.parts[candidate.content.parts.length - 1];
 
-    return textPart.text;
+    // Extract usage metadata
+    const usageMetadata = response.usageMetadata || {};
+    const usage = {
+        inputTokens: usageMetadata.promptTokenCount || 0,
+        outputTokens: usageMetadata.candidatesTokenCount || 0
+    };
+
+    return { text: textPart.text, usage };
 }
 
 // === ANTHROPIC (CLAUDE) IMPLEMENTATION ===
@@ -164,7 +170,13 @@ async function generateAnthropic(modelId, prompt, imageBase64, log) {
         throw new Error(`Claude returned empty response`);
     }
 
-    return response.content[0].text;
+    // Extract usage metadata
+    const usage = {
+        inputTokens: response.usage?.input_tokens || 0,
+        outputTokens: response.usage?.output_tokens || 0
+    };
+
+    return { text: response.content[0].text, usage };
 }
 
 // === OPENAI IMPLEMENTATION ===
@@ -197,7 +209,13 @@ async function generateOpenAI(modelId, prompt, imageBase64, log) {
         throw new Error(`OpenAI returned empty response`);
     }
 
-    return response.choices[0].message.content;
+    // Extract usage metadata
+    const usage = {
+        inputTokens: response.usage?.prompt_tokens || 0,
+        outputTokens: response.usage?.completion_tokens || 0
+    };
+
+    return { text: response.choices[0].message.content, usage };
 }
 
 /**

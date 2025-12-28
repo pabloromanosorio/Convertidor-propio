@@ -5,6 +5,7 @@ const { normalizeToPdf } = require('./input');
 const { pdfToImages } = require('./middleware');
 const { generateDocxV2, executeGeminiCode } = require('./renderer_v2');
 const { generateWithVision, MODELS, getConfiguredProviders } = require('./providers');
+const { calculateCost, aggregateCosts, formatCost } = require('./pricing');
 
 // --- CONFIGURATION ---
 const DEFAULT_MODEL = 'gemini-3-pro'; // Can be overridden per request
@@ -22,8 +23,8 @@ function getCachePath(imagePath) {
     return path.join(__dirname, '../temp_code', `${hash}.js`);
 }
 
-async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) {
-    const cachePath = getCachePath(imagePath + modelKey); // Include model in cache key
+async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL, exactLayout = false) {
+    const cachePath = getCachePath(imagePath + modelKey + (exactLayout ? '_exact' : '')); // Include layout in cache key
 
     // 1. Smart Cache Check
     if (fs.existsSync(cachePath)) {
@@ -32,7 +33,7 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) 
             // Validate the cached code before trusting it
             executeGeminiCode(cachedCode);
             log(`⚡ [Page ${pageNum}] Cache Hit & Verified!`);
-            return cachedCode;
+            return { code: cachedCode, usage: null }; // No usage for cached results
         } catch (cacheErr) {
             log(`⚠️ [Page ${pageNum}] Cache found but corrupt/invalid (${cacheErr.message}). Regenerating...`);
             fs.unlinkSync(cachePath); // Auto-delete bad cache
@@ -50,13 +51,12 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) 
     ---------------------------------------------------
 
     --- CRITICAL FORMATTING RULES ---
-    1. **TEXT COLOR:** ALL TextRun objects MUST explicitly set 'color: "000000"'.
+    1. **TEXT COLOR:** ALL TextRun objects MUST explicitly set 'color: "000000"' (black text ONLY, regardless of original color).
     2. **FONTS:** Use "Arial" for all text. Size 22 (11pt) body, larger for headers.
     3. **TABLES:** Use DXA (twips) widths with columnWidths array:
        - columnWidths: [4680, 4680] for 2 cols, [3120, 3120, 3120] for 3 cols
        - Cell width: { size: 4680, type: WidthType.DXA }
-       - ALWAYS use ShadingType.CLEAR if setting cell shading
-    4. **CELLS:** If shading needed, use: shading: { fill: "FFFFFF", type: ShadingType.CLEAR }
+    4. **TABLE CELLS:** NEVER use cell shading. Do NOT add any 'shading' property to table cells regardless of original appearance.
     5. **IMAGES/SIGNATURES:**
        - If you see a **SIGNATURE**, insert a Paragraph with text "[Signature]".
        - If you see a **SEAL/STAMP**, insert a Paragraph with text "[Seal: <text content of seal>]".
@@ -83,7 +83,23 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) 
     - If a table has 20 rows, your code MUST have exactly 20 TableRow objects
     - Double-check your row count before generating the code
     - Include ALL data cells, even if text is small or partially visible
-    
+    ${exactLayout ? `
+    --- EXACT LAYOUT MODE (ENABLED) ---
+    CRITICAL: Replicate the EXACT visual layout of the original page:
+    1. **SPACING:** Use precise spacing values to match vertical positioning:
+       - Use 'spacing: { before: X, after: Y }' on Paragraphs (values in twips, 1pt = 20 twips)
+       - Estimate spacing based on visual gaps in the image
+    2. **INDENTATION:** Match horizontal positioning:
+       - Use 'indent: { left: X }' for left-aligned content (values in twips)
+       - Use 'indent: { firstLine: X }' for first-line indents
+    3. **ALIGNMENT:** Match text alignment exactly:
+       - Use AlignmentType.LEFT, CENTER, RIGHT, or JUSTIFIED as needed
+    4. **FONT SIZES:** Vary font sizes to match visual hierarchy:
+       - Estimate sizes based on relative text sizes in the image
+       - Use exact values like size: 24 (12pt), size: 28 (14pt), size: 32 (16pt), size: 48 (24pt)
+    5. **LINE BREAKS:** Add empty paragraphs or use 'spacing' to create visual gaps
+    6. **TABLE POSITIONING:** Match table widths and column proportions exactly
+    ` : ''}
     --- OUTPUT REQUIREMENTS ---
     1. Output ONLY valid JavaScript code. No explanation text outside code blocks.
     2. The code must evaluate to an ARRAY of 'docx' objects (Paragraph, Table, etc.).
@@ -109,8 +125,10 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) 
         log(`🧠 [Page ${pageNum}] [Req: ${requestId}] Sending to ${modelName} (Attempt ${attempts}/${MAX_RETRIES})...`);
 
         try {
-            // Use unified provider API
-            const code = await generateWithVision(modelKey, prompt, imageBuffer, log);
+            // Use unified provider API - now returns { text, usage }
+            const result = await generateWithVision(modelKey, prompt, imageBuffer, log);
+            const code = result.text;
+            const usage = result.usage;
 
             // 3. VALIDATION STEP
             try {
@@ -118,7 +136,7 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) 
                 // If successful:
                 fs.writeFileSync(cachePath, code);
                 log(`💾 [Page ${pageNum}] Code generated, verified, and saved.`);
-                return code;
+                return { code, usage };
             } catch (validationErr) {
                 throw new Error(`Generated code failed validation: ${validationErr.message}`);
             }
@@ -127,14 +145,15 @@ async function analyzePageV2(log, imagePath, pageNum, modelKey = DEFAULT_MODEL) 
             log(`❌ [Page ${pageNum}] Attempt ${attempts} failed: ${e.message}`);
             if (attempts === MAX_RETRIES) {
                 log(`💀 [Page ${pageNum}] All attempts failed. Skipping page.`);
-                return null; // Give up on this page so the doc can still generate
+                return { code: null, usage: null }; // Give up on this page so the doc can still generate
             }
             // Wait a bit before retry
             await new Promise(r => setTimeout(r, 2000));
         }
     }
 }
-async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, modelKey = DEFAULT_MODEL) {
+async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, modelKey = DEFAULT_MODEL, options = {}) {
+    const { addPageBreaks = false, exactLayout = false } = options;
     const log = (msg) => {
         console.log(msg);
         if (logCallback) logCallback(msg);
@@ -149,6 +168,7 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, m
 
         const BATCH_SIZE = 3; // Safe starting point for Paid Tier (approx 10 RPM limit)
         const allChildrenCode = new Array(images.length); // Pre-allocate to maintain order
+        const allUsageData = []; // Track usage for cost calculation
 
         // Process in batches
         for (let i = 0; i < images.length; i += BATCH_SIZE) {
@@ -158,23 +178,24 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, m
             // Map batch to promises
             const promises = batch.map((imagePath, index) => {
                 const pageNum = i + index + 1;
-                return analyzePageV2(log, imagePath, pageNum, modelKey)
-                    .then(code => {
+                return analyzePageV2(log, imagePath, pageNum, modelKey, exactLayout)
+                    .then(result => {
                         log(`✅ Page ${pageNum} Analysis Complete`);
-                        return { index: i + index, code };
+                        return { index: i + index, code: result.code, usage: result.usage };
                     })
                     .catch(err => {
                         log(`❌ Failed Page ${pageNum}: ${err.message}`);
-                        return { index: i + index, code: null }; // Handle error gracefully?
+                        return { index: i + index, code: null, usage: null }; // Handle error gracefully?
                     });
             });
 
             // Wait for ALL in this batch
             const results = await Promise.all(promises);
 
-            // Store results in correct order
+            // Store results in correct order and collect usage
             results.forEach(r => {
                 if (r.code) allChildrenCode[r.index] = r.code;
+                if (r.usage) allUsageData.push(r.usage);
             });
 
             // Rate Limit Delay between batches (if not last batch)
@@ -189,7 +210,7 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, m
 
         log("... Executing Generated Code...");
         const { executeGeminiCode } = require('./renderer_v2');
-        const { Document, Packer } = require('docx');
+        const { Document, Packer, Paragraph, PageBreak } = require('docx');
 
         let finalChildren = [];
         // validCode is now array of strings? No, I updated it to be filter(c => c).
@@ -207,8 +228,11 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, m
             try {
                 const pageChildren = executeGeminiCode(code);
                 finalChildren = finalChildren.concat(pageChildren);
-                // Add a page break between pages?
-                // finalChildren.push(new Paragraph({ children: [new PageBreak()] })); 
+
+                // Add page break after each page (except the last one)
+                if (addPageBreaks && i < allChildrenCode.length - 1) {
+                    finalChildren.push(new Paragraph({ children: [new PageBreak()] }));
+                }
             } catch (execErr) {
                 log(`❌ Failed to render Page ${i + 1}: ${execErr.message}. Content skipped.`);
                 // Optional: Delete cache for this page?
@@ -255,7 +279,19 @@ async function convertDocumentV2(inputFile, pageRange, outputDir, logCallback, m
         fs.writeFileSync(outputPath, buffer);
 
         log(`🎉 V2 Conversion Success! Saved to ${path.basename(outputPath)}`);
-        return outputPath;
+
+        // Calculate total cost
+        const totalUsage = allUsageData.reduce(
+            (acc, u) => ({
+                inputTokens: acc.inputTokens + (u.inputTokens || 0),
+                outputTokens: acc.outputTokens + (u.outputTokens || 0)
+            }),
+            { inputTokens: 0, outputTokens: 0 }
+        );
+        const cost = calculateCost(modelKey, totalUsage.inputTokens, totalUsage.outputTokens);
+        log(`💰 Cost: ${formatCost(cost.totalCost)} (${totalUsage.inputTokens.toLocaleString()} in / ${totalUsage.outputTokens.toLocaleString()} out tokens)`);
+
+        return { outputPath, cost };
 
     } catch (e) {
         log(`❌ Error: ${e.message}`);

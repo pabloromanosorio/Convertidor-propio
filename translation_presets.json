@@ -1,0 +1,36 @@
+{
+    "presets": [
+        {
+            "name": "Medical/Pharma",
+            "glossary": {
+                "efficacy": "eficacia",
+                "adverse event": "evento adverso",
+                "baseline": "valor basal",
+                "endpoint": "criterio de valoración",
+                "placebo": "placebo"
+            },
+            "dateFormat": "DD/MM/YYYY",
+            "numberFormat": "es-CO",
+            "acronymHandling": "expand-first"
+        },
+        {
+            "name": "Legal/Contract",
+            "glossary": {
+                "agreement": "acuerdo",
+                "liability": "responsabilidad",
+                "indemnify": "indemnizar",
+                "breach": "incumplimiento"
+            },
+            "dateFormat": "DD/MM/YYYY",
+            "numberFormat": "es-CO",
+            "acronymHandling": "keep-english"
+        },
+        {
+            "name": "Technical Manual",
+            "glossary": {},
+            "dateFormat": "DD/MM/YYYY",
+            "numberFormat": "es-CO",
+            "acronymHandling": "keep-english"
+        }
+    ]
+}
