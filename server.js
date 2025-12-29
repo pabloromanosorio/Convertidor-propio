@@ -273,7 +273,10 @@ app.get('/api/models', (req, res) => {
 });
 
 // Start Server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`🚀 Server running at http://localhost:${PORT}`);
     console.log(`👉 Open your browser to access the drag-and-drop interface.`);
 });
+
+// Increase timeout to 1 hour (3600000 ms) to handle large file translations
+server.setTimeout(3600000);
