@@ -633,13 +633,19 @@ function patchTranslationsIntoXml(xmlString, allTranslations) {
                 if (processedPositions.has(posKey)) {
                     continue;
                 }
+
+                // CLEANUP: Even for single nodes, we must strip the tags!
+                // The LLM returns tags [b]...[/b] but we are putting this into a text node <w:t>
+                // We do NOT want [b] codes in the visible document.
+                const cleanTranslation = translation.replace(/\[\s*\/?\s*(?:b|i|u)\s*\]/gi, '');
+
                 processedPositions.add(posKey);
 
                 replacements.push({
                     start: node.globalStart,
                     end: node.globalEnd,
                     original: node.fullMatch,
-                    replacement: buildTextTag(node.fullMatch, translation)
+                    replacement: buildTextTag(node.fullMatch, cleanTranslation)
                 });
             } else {
                 // Multiple text nodes: distribute translation
