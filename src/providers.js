@@ -15,6 +15,7 @@ const MODELS = {
     'gemini-3-pro': { provider: 'gemini', id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro' },
     'gemini-2.5-pro': { provider: 'gemini', id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
     'gemini-2.0-flash': { provider: 'gemini', id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+    'gemini-1.5-flash': { provider: 'gemini', id: 'gemini-1.5-flash-001', name: 'Gemini 1.5 Flash' },
 
     // Claude Models (Anthropic)
     'claude-sonnet-4.5': { provider: 'anthropic', id: 'claude-sonnet-4-5-20241022', name: 'Claude Sonnet 4.5' },
@@ -241,9 +242,46 @@ function getConfiguredProviders() {
     return providers;
 }
 
+/**
+ * Send a text-only prompt to any supported model
+ */
+async function generateText(prompt, options = {}) {
+    const modelKey = options.model || 'gemini-2.0-flash';
+    const log = options.log || console.log;
+
+    // Quick Hack: Reuse generateWithVision but without image? 
+    // No, vision endpoints usually require image or fail/behave differently.
+    // Let's implement specific text logic for Gemini.
+
+    // For now, simplify: assume Gemini
+    const model = MODELS[modelKey];
+    if (!model) throw new Error(`Unknown model: ${modelKey}`);
+
+    if (model.provider === 'gemini') {
+        const client = getGeminiClient();
+        if (!client) throw new Error('GEMINI_API_KEY not set');
+
+        const response = await client.models.generateContent({
+            model: model.id,
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: { temperature: 0.1 }
+        });
+
+        const text = response.candidates[0].content.parts[0].text;
+        const usage = {
+            inputTokens: response.usageMetadata?.promptTokenCount,
+            outputTokens: response.usageMetadata?.candidatesTokenCount
+        };
+        return { text, usage };
+    }
+
+    throw new Error("generateText currently only implemented for Gemini in providers.js");
+}
+
 module.exports = {
     MODELS,
     generateWithVision,
+    generateText, // Exported now
     getAvailableModels,
     getConfiguredProviders
 };
