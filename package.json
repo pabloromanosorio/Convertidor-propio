@@ -16,12 +16,14 @@
     "docx": "^9.5.1",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "jszip": "^3.10.1",
     "libreoffice-convert": "^1.7.0",
     "mammoth": "^1.11.0",
     "multer": "^2.0.2",
     "openai": "^6.14.0",
     "pdf-parse": "^2.4.5",
     "pdf-poppler": "^0.2.3",
+    "xmldom": "^0.6.0",
     "zod": "^4.1.13"
   }
 }

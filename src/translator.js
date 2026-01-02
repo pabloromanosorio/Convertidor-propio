@@ -665,7 +665,8 @@ function patchTranslationsIntoXml(xmlString, allTranslations) {
                             start: item.node.globalStart,
                             end: item.node.globalEnd,
                             original: item.node.fullMatch,
-                            replacement: buildTextTag(item.node.fullMatch, item.text)
+                            // CLEANUP: Ensure no tags leaked into the stream text
+                            replacement: buildTextTag(item.node.fullMatch, item.text.replace(/\[\s*\/?\s*(?:b|i|u)\s*\]/gi, ''))
                         });
                     }
                     continue; // Done with this segment
@@ -771,7 +772,10 @@ function patchTranslationsIntoXml(xmlString, allTranslations) {
 function buildTextTag(originalTag, newText) {
     // Check if original had xml:space="preserve"
     const hasPreserve = originalTag.includes('xml:space="preserve"');
-    const escapedText = escapeXml(newText);
+
+    // Fix: Unescape entities first (in case LLM returned &amp;) then escape properly for XML
+    const cleanText = unescapeCommonEntities(newText);
+    const escapedText = escapeXml(cleanText);
 
     if (hasPreserve) {
         return `<w:t xml:space="preserve">${escapedText}</w:t>`;
@@ -791,6 +795,20 @@ function escapeXml(text) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
     // NOTE: Quotes and apostrophes are NOT escaped in Word XML text nodes
+}
+
+/**
+ * Helper: Unescape common XML entities that LLM might output
+ * e.g. LLM says "Rice &amp; Beans" -> we want "Rice & Beans" so escapeXml can turn it back to "Rice &amp; Beans"
+ */
+function unescapeCommonEntities(text) {
+    if (!text) return text;
+    return text
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'");
 }
 
 /**
@@ -950,7 +968,12 @@ async function translateDocx(inputPath, outputPath, customPrompt, modelKey = 'ge
             throw new Error(err);
         }
 
-        const patchedXml = patchTranslationsIntoXml(documentXml, allTranslations);
+        const patchedXmlRaw = patchTranslationsIntoXml(documentXml, allTranslations);
+
+        // Step 6.5: Global Cleanup - Remove any remaining [b], [i], [u] tags
+        // This is a "nuclear" option to guarantee no formatting tags leak into the final document text
+        log('🧹 Running global tag cleanup...');
+        const patchedXml = patchedXmlRaw.replace(/\[\s*\/?\s*(?:b|i|u)\s*\]/gi, '');
 
         // GUARDRAIL: Validate XML before saving
         const xmlValidation = validateXml(patchedXml);
@@ -998,12 +1021,12 @@ function parseTaggedText(text) {
     const segments = [];
 
     // Tokenize by tags (allow whitespace inside, e.g. [ b ])
-    const tokenRegex = /(\[\s*\/?\s*(?:b|i|u)\s*\])/g;
+    const tokenRegex = /(\[\s*\/?\s*(?:b|i|u)\s*\])/gi;
     const parts = text.split(tokenRegex);
 
     let activeTags = new Set();
-    const isTagRegex = /^\[\s*(b|i|u)\s*\]$/;
-    const isCloseTagRegex = /^\[\s*\/\s*(b|i|u)\s*\]$/;
+    const isTagRegex = /^\[\s*(b|i|u)\s*\]$/i;
+    const isCloseTagRegex = /^\[\s*\/\s*(b|i|u)\s*\]$/i;
 
     for (const part of parts) {
         if (!part) continue;
