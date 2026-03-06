@@ -1066,9 +1066,9 @@ async function loadModels() {
                     id.includes('gemini-3.1-pro') ||
                     id.includes('claude-sonnet-4.6') ||
                     id.includes('claude-opus-4.6') ||
-                    id.includes('gpt-5.4') ||
+                    id.includes('gpt-4.5') ||
                     id.includes('kimi-k2.5') ||
-                    id.includes('qwen-3.5-pro');
+                    id.includes('glm-5');
                     
                 if (isFeatured) {
                     m.provider = '1_featured';
@@ -1082,11 +1082,34 @@ async function loadModels() {
             
             // Sort vision models: prefer Gemini Flash, then other vision models, then free at end
             const sortedVisionModels = [...visionModels].sort((a, b) => {
-                // Prefer Gemini Flash for conversion (great vision, fast)
-                const aIsGeminiFlash = a.id?.toLowerCase().includes('gemini-3.0-flash') || a.name.toLowerCase().includes('gemini 3.0 flash');
-                const bIsGeminiFlash = b.id?.toLowerCase().includes('gemini-3.0-flash') || b.name.toLowerCase().includes('gemini 3.0 flash');
-                if (aIsGeminiFlash && !bIsGeminiFlash) return -1;
-                if (!aIsGeminiFlash && bIsGeminiFlash) return 1;
+                // Explicit order for conversion:
+                // 1. Gemini 3.0 Flash
+                // 2. Gemini 3.1 Pro
+                // 3. Claude Sonnet 4.6
+                // 4. Claude Opus 4.6
+                // 5. ChatGPT 4.5
+                // 6. Kimi 2.5
+                // 7. GLM 5
+                
+                const getOrder = (model) => {
+                    const id = (model.id || '').toLowerCase();
+                    const name = (model.name || '').toLowerCase();
+                    if (id.includes('gemini-3.0-flash') || name.includes('gemini 3.0 flash')) return 1;
+                    if (id.includes('gemini-3.1-pro') || name.includes('gemini 3.1 pro')) return 2;
+                    if (id.includes('claude-sonnet-4.6') || name.includes('sonnet 4.6')) return 3;
+                    if (id.includes('claude-opus-4.6') || name.includes('opus 4.6')) return 4;
+                    if (id.includes('gpt-4.5') || name.includes('gpt 4.5')) return 5;
+                    if (id.includes('kimi-k2.5') || name.includes('kimi 2.5')) return 6;
+                    if (id.includes('glm-5') || name.includes('glm 5')) return 7;
+                    return 99;
+                };
+
+                const aOrder = getOrder(a);
+                const bOrder = getOrder(b);
+
+                if (aOrder !== 99 || bOrder !== 99) {
+                    if (aOrder !== bOrder) return aOrder - bOrder;
+                }
                 
                 // Among same provider: non-free before free
                 if (a.provider === b.provider) {
@@ -1104,11 +1127,34 @@ async function loadModels() {
             
             // For translation dropdown: all models sorted with free at end
             const sortedTranslationModels = [...filteredModels].sort((a, b) => {
-                // Prefer Gemini 3.1 Pro for translation
-                const aIsGeminiPro = a.id?.toLowerCase().includes('gemini-3.1-pro') || a.name.toLowerCase().includes('gemini 3.1 pro');
-                const bIsGeminiPro = b.id?.toLowerCase().includes('gemini-3.1-pro') || b.name.toLowerCase().includes('gemini 3.1 pro');
-                if (aIsGeminiPro && !bIsGeminiPro) return -1;
-                if (!aIsGeminiPro && bIsGeminiPro) return 1;
+                // Explicit order for translation:
+                // 1. Gemini 3.1 Pro (Default)
+                // 2. Gemini 3.0 Flash
+                // 3. Claude Sonnet 4.6
+                // 4. Claude Opus 4.6
+                // 5. ChatGPT 4.5
+                // 6. Kimi 2.5
+                // 7. GLM 5
+                
+                const getOrder = (model) => {
+                    const id = (model.id || '').toLowerCase();
+                    const name = (model.name || '').toLowerCase();
+                    if (id.includes('gemini-3.1-pro') || name.includes('gemini 3.1 pro')) return 1;
+                    if (id.includes('gemini-3.0-flash') || name.includes('gemini 3.0 flash')) return 2;
+                    if (id.includes('claude-sonnet-4.6') || name.includes('sonnet 4.6')) return 3;
+                    if (id.includes('claude-opus-4.6') || name.includes('opus 4.6')) return 4;
+                    if (id.includes('gpt-4.5') || name.includes('gpt 4.5')) return 5;
+                    if (id.includes('kimi-k2.5') || name.includes('kimi 2.5')) return 6;
+                    if (id.includes('glm-5') || name.includes('glm 5')) return 7;
+                    return 99;
+                };
+
+                const aOrder = getOrder(a);
+                const bOrder = getOrder(b);
+
+                if (aOrder !== 99 || bOrder !== 99) {
+                    if (aOrder !== bOrder) return aOrder - bOrder;
+                }
                 
                 // Among same provider: non-free before free
                 if (a.provider === b.provider) {
