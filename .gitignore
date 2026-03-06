@@ -26,3 +26,4 @@ test_*.js
 # User presets (private prompts and glossaries)
 user_presets/
 .git_backup/
+future ideas/
