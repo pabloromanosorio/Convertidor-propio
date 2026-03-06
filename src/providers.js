@@ -11,7 +11,7 @@ const path = require('path');
 const { GoogleGenAI } = require('@google/genai');
 const OpenAI = require('openai'); // Used for Kimi
 const Anthropic = require('@anthropic-ai/sdk');
-const { TranslationServiceClient } = require('@google-cloud/translate').v3;
+// const { TranslationServiceClient } = require('@google-cloud/translate').v3; // Removed per user request
 
 // === SETTINGS FILE PATH ===
 const settingsPath = path.join(__dirname, '..', 'settings.json');
@@ -51,13 +51,7 @@ let googleCloudTranslator = null;
 let openRouterClient = null;
 
 function getGoogleCloudTranslator() {
-    const jsonPath = getApiKey('GOOGLE_APPLICATION_CREDENTIALS');
-    if (!googleCloudTranslator && jsonPath && fs.existsSync(jsonPath)) {
-        googleCloudTranslator = new TranslationServiceClient({
-            keyFilename: jsonPath
-        });
-    }
-    return googleCloudTranslator;
+    return null; // Google Cloud Translate removed
 }
 
 function getGeminiClient() {
