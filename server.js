@@ -448,8 +448,8 @@ app.post('/api/download-zip', async (req, res) => {
 app.get('/api/models', (req, res) => {
     const models = getAvailableModels();
     const configuredProviders = getConfiguredProviders();
-    console.log('All models:', models.map(m => m.key));
-    console.log('Configured providers:', configuredProviders);
+    // console.log('All models:', models.map(m => m.key));
+// console.log('Configured providers:', configuredProviders);
     
     // With OpenRouter only, we always show all models (they come from OpenRouter API)
     // Only filter if no providers are configured at all

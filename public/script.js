@@ -1066,10 +1066,10 @@ async function loadModels() {
                     id.includes('gemini-3.1-pro') ||
                     id.includes('claude-sonnet-4.6') ||
                     id.includes('claude-opus-4.6') ||
+                    id.includes('o3-mini') ||
                     id.includes('kimi-k2.5') ||
-                    id.includes('glm-5') ||
-                    id.includes('glm-4.6v') ||
-                    id.includes('glm-4.7');
+                    id.includes('qwen-2.5-72b') ||
+                    id.includes('glm-4-9b');
                     
                 if (isFeatured) {
                     m.provider = '1_featured';
