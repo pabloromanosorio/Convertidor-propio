@@ -27,3 +27,5 @@ test_*.js
 user_presets/
 .git_backup/
 future ideas/
+tests/
+.planning/
