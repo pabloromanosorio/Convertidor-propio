@@ -1041,7 +1041,16 @@ async function loadModels() {
             }
         }
 
-        console.log('Filtered models:', filteredModels.map(m => m.key));
+        // Create a Map to filter duplicates by model ID
+        const uniqueModelsMap = new Map();
+        
+        // Populate map: dynamic models (OpenRouter API) override static ones
+        filteredModels.forEach(m => {
+            uniqueModelsMap.set(m.id || m.key, m);
+        });
+        
+        // Convert back to array
+        filteredModels = Array.from(uniqueModelsMap.values());
 
         if (filteredModels.length === 0) {
             mainDropdown.setModels([]);
