@@ -1062,14 +1062,13 @@ async function loadModels() {
                 const name = (m.name || '').toLowerCase();
                 
                 const isFeatured = 
-                    id.includes('gemini-2.0-flash') ||
+                    id.includes('gemini-3.0-flash') ||
                     id.includes('gemini-3.1-pro') ||
                     id.includes('claude-sonnet-4.6') ||
                     id.includes('claude-opus-4.6') ||
-                    id.includes('o3-mini') ||
+                    id.includes('gpt-5.4') ||
                     id.includes('kimi-k2.5') ||
-                    id.includes('qwen-2.5-72b') ||
-                    id.includes('glm-4-9b');
+                    id.includes('qwen-3.5-pro');
                     
                 if (isFeatured) {
                     m.provider = '1_featured';
@@ -1084,8 +1083,8 @@ async function loadModels() {
             // Sort vision models: prefer Gemini Flash, then other vision models, then free at end
             const sortedVisionModels = [...visionModels].sort((a, b) => {
                 // Prefer Gemini Flash for conversion (great vision, fast)
-                const aIsGeminiFlash = a.id?.toLowerCase().includes('gemini-2.0-flash') || a.name.toLowerCase().includes('gemini 2.0 flash');
-                const bIsGeminiFlash = b.id?.toLowerCase().includes('gemini-2.0-flash') || b.name.toLowerCase().includes('gemini 2.0 flash');
+                const aIsGeminiFlash = a.id?.toLowerCase().includes('gemini-3.0-flash') || a.name.toLowerCase().includes('gemini 3.0 flash');
+                const bIsGeminiFlash = b.id?.toLowerCase().includes('gemini-3.0-flash') || b.name.toLowerCase().includes('gemini 3.0 flash');
                 if (aIsGeminiFlash && !bIsGeminiFlash) return -1;
                 if (!aIsGeminiFlash && bIsGeminiFlash) return 1;
                 

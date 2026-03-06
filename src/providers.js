@@ -36,12 +36,11 @@ function getApiKey(keyName) {
 const MODELS = {
     // OpenRouter Models - default models for dropdown
     'openrouter-gemini-3-1-pro': { provider: 'openrouter', id: 'google/gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', supportsVision: true, isFree: false },
-    'openrouter-gemini-2-0-flash': { provider: 'openrouter', id: 'google/gemini-2.0-flash-001', name: 'Gemini 2.0 Flash', supportsVision: true, isFree: false },
+    'openrouter-gemini-3-0-flash': { provider: 'openrouter', id: 'google/gemini-3.0-flash', name: 'Gemini 3.0 Flash', supportsVision: true, isFree: false },
     'openrouter-claude-opus-4-6': { provider: 'openrouter', id: 'anthropic/claude-opus-4-6-20250514', name: 'Claude Opus 4.6', supportsVision: false, isFree: false },
     'openrouter-claude-sonnet-4-6': { provider: 'openrouter', id: 'anthropic/claude-sonnet-4-6-20250514', name: 'Claude Sonnet 4.6', supportsVision: false, isFree: false },
-    'openrouter-openai-o3-mini': { provider: 'openrouter', id: 'openai/o3-mini', name: 'OpenAI o3-mini', supportsVision: false, isFree: false },
-    'openrouter-glm-4-9b': { provider: 'openrouter', id: 'zhipu/glm-4-9b-chat', name: 'GLM-4 9B', supportsVision: true, isFree: false },
-    'openrouter-qwen-2-5-72b': { provider: 'openrouter', id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen 2.5 72B Pro', supportsVision: false, isFree: false },
+    'openrouter-chatgpt-5-4': { provider: 'openrouter', id: 'openai/chatgpt-5.4', name: 'ChatGPT 5.4', supportsVision: true, isFree: false },
+    'openrouter-qwen-3-5-pro': { provider: 'openrouter', id: 'qwen/qwen-3.5-pro', name: 'Qwen 3.5 Pro', supportsVision: false, isFree: false },
     'openrouter-kimi-2-5': { provider: 'openrouter', id: 'moonshotai/kimi-k2.5', name: 'Kimi k2.5', supportsVision: true, isFree: false }
 };
 
