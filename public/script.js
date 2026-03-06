@@ -746,11 +746,22 @@ class ModelDropdown {
             groups[m.provider].push(m);
         });
 
-        Object.entries(groups).forEach(([provider, models]) => {
+        const sortedGroups = Object.entries(groups).sort((a, b) => {
+            if (a[0] === '1_featured') return -1;
+            if (b[0] === '1_featured') return 1;
+            return a[0].localeCompare(b[0]);
+        });
+
+        sortedGroups.forEach(([provider, models]) => {
             const header = document.createElement('div');
             header.className = 'model-group-header';
-            // Use proper display name: "openrouter" -> "OpenRouter"
-            const displayName = provider === 'openrouter' ? 'OpenRouter' : (provider.charAt(0).toUpperCase() + provider.slice(1));
+            
+            // Use proper display name
+            let displayName = provider;
+            if (provider === '1_featured') displayName = '⭐ Recommended Models';
+            else if (provider === 'openrouter') displayName = 'All OpenRouter Models';
+            else displayName = provider.charAt(0).toUpperCase() + provider.slice(1);
+            
             header.textContent = displayName;
             this.list.appendChild(header);
 
@@ -1036,6 +1047,26 @@ async function loadModels() {
             mainDropdown.setModels([]);
             translationDropdown.setModels([]);
         } else {
+            // Identify featured models based on user preference
+            filteredModels.forEach(m => {
+                const id = (m.id || '').toLowerCase();
+                const name = (m.name || '').toLowerCase();
+                
+                const isFeatured = 
+                    id.includes('gemini-2.0-flash') ||
+                    id.includes('gemini-3.1-pro') ||
+                    id.includes('claude-sonnet-4.6') ||
+                    id.includes('claude-opus-4.6') ||
+                    id.includes('kimi-k2.5') ||
+                    id.includes('glm-5') ||
+                    id.includes('glm-4.6v') ||
+                    id.includes('glm-4.7');
+                    
+                if (isFeatured) {
+                    m.provider = '1_featured';
+                }
+            });
+
             // For conversion (main) dropdown: only vision-capable models
             const visionModels = filteredModels.filter(m => m.supportsVision === true);
             
@@ -1049,12 +1080,15 @@ async function loadModels() {
                 if (aIsGeminiFlash && !bIsGeminiFlash) return -1;
                 if (!aIsGeminiFlash && bIsGeminiFlash) return 1;
                 
-                // Among OpenRouter: non-free before free
-                if (a.provider === 'openrouter' && b.provider === 'openrouter') {
+                // Among same provider: non-free before free
+                if (a.provider === b.provider) {
                     const aFree = a.isFree === true || (a.name && a.name.toLowerCase().includes('(free)'));
                     const bFree = b.isFree === true || (b.name && b.name.toLowerCase().includes('(free)'));
                     if (aFree && !bFree) return 1;
                     if (!aFree && bFree) return -1;
+                    
+                    // Alphabetical fallback
+                    return (a.name || '').localeCompare(b.name || '');
                 }
                 
                 return 0;
@@ -1074,6 +1108,9 @@ async function loadModels() {
                     const bFree = b.isFree === true || (b.name && b.name.toLowerCase().includes('(free)'));
                     if (aFree && !bFree) return 1;
                     if (!aFree && bFree) return -1;
+                    
+                    // Alphabetical fallback
+                    return (a.name || '').localeCompare(b.name || '');
                 }
                 
                 return 0;

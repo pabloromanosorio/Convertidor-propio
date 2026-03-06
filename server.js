@@ -505,6 +505,15 @@ app.get('/api/openrouter-models', async (req, res) => {
         // Transform to our format - filter for popular/recommended models
         const models = data.data
             .filter(m => m.id && m.name) // Has required fields
+            .filter(m => {
+                const id = m.id.toLowerCase();
+                // Exclude NVIDIA models
+                if (id.includes('nvidia/')) return false;
+                // Exclude experimental/tool-calling/image-preview Gemini models
+                if (id.includes('google/') && (id.includes('customtools') || id.includes('image-preview'))) return false;
+                // Exclude experimental OpenAI models if any (optional)
+                return true;
+            })
             .slice(0, 100) // Limit to first 100 to avoid overwhelming the dropdown
             .map(m => ({
                 key: `openrouter-dynamic-${encodeURIComponent(m.id)}`,

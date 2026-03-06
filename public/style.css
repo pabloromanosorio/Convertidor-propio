@@ -661,6 +661,12 @@ header {
     margin-bottom: 0;
 }
 
+.model-info-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
 .model-info-icon {
     cursor: help;
     font-size: 1rem;
@@ -670,6 +676,59 @@ header {
 }
 
 .model-info-icon:hover {
+    opacity: 1;
+}
+
+.model-tooltip {
+    visibility: hidden;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--surface, #ffffff);
+    color: var(--text, #333333);
+    text-align: left;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border, #dddddd);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    width: 350px;
+    max-width: 90vw;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.2s, visibility 0.2s;
+    pointer-events: none;
+}
+
+.model-tooltip::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -6px;
+    border-width: 6px;
+    border-style: solid;
+    border-color: var(--border, #dddddd) transparent transparent transparent;
+}
+
+/* Add a white triangle on top of the border triangle to make it seamless */
+.model-tooltip::before {
+    content: "";
+    position: absolute;
+    top: calc(100% - 1px);
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: var(--surface, #ffffff) transparent transparent transparent;
+    z-index: 1;
+}
+
+.model-info-wrapper:hover .model-tooltip,
+.model-info-icon:hover + .model-tooltip {
+    visibility: visible;
     opacity: 1;
 }
 
