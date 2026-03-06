@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="title">Document Converter & Translator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <button id="settings-btn" class="settings-btn" title="Settings" data-i18n-title="settings.title">⚙️</button>
+            <h1 data-i18n="header.title">📄 Document Converter & Translator</h1>
+            <p id="header-subtitle" data-i18n="header.subtitle">Convert PDF to DOCX or Translate DOCX (EN ↔ ES Colombia)
+            </p>
+        </header>
+
+        <div class="upload-area" id="drop-zone">
+            <div class="icon">📄</div>
+            <h2 data-i18n="upload.title">Drag & Drop your file(s) here</h2>
+            <p data-i18n="upload.subtitle">PDF, Images (for conversion) or DOCX (for translation)</p>
+            <input type="file" id="file-input" hidden accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.webp,.tiff" multiple>
+        </div>
+
+        <div class="options-area">
+            <div class="model-label-row">
+                <label for="model-search">Model (via OpenRouter):</label>
+                <span class="model-info-icon" title="Conversion Tips:&#10;&#10;• Gemini 2.0 Flash: Best for most documents - fast & reliable&#10;• Gemini 3.1 Pro: Better for complex layouts, tables, charts&#10;• Claude Sonnet 4.6: Excellent for maintaining formatting&#10;• Try Kimi K2.5, MiniMax M2.5, GLM-4.6V for budget options - all have vision support">ℹ️</span>
+            </div>
+            <div class="model-dropdown" id="model-dropdown">
+                <input type="text" id="model-search" class="input-field model-search-input" placeholder="Search models..." autocomplete="off">
+                <div class="model-dropdown-list hidden" id="model-dropdown-list"></div>
+            </div>
+            <input type="hidden" id="model-select">
+
+            <label for="page-range" data-i18n="options.pageRange">Page Range (PDF only):</label>
+            <input type="text" id="page-range" placeholder="e.g. 1-5, 10 (empty = all)"
+                data-i18n-placeholder="options.pageRangePlaceholder" class="input-field">
+
+            <div class="pdf-options">
+                <label title="Add a page break after each PDF page in the output"
+                    data-i18n-title="options.pageBreaksTitle">
+                    <input type="checkbox" id="page-breaks-toggle">
+                    <span data-i18n="options.pageBreaks">📄 Add Page Breaks</span>
+                </label>
+                <label id="agentic-vision-label" title="Gemini 3.1 only. Enables code execution for better layout analysis"
+                    data-i18n-title="options.agenticVisionTitle">
+                    <input type="checkbox" id="agentic-vision-toggle">
+                    <span data-i18n="options.agenticVision">🔍 Agentic Vision (Gemini 3.1 Only)</span>
+                </label>
+            </div>
+
+            <div class="translation-toggle">
+                <label id="translate-toggle-label">
+                    <input type="checkbox" id="translate-toggle">
+                    <span data-i18n="options.translate">🌐 Translate (EN ↔ ES Colombia)</span>
+                </label>
+            </div>
+
+            <!-- Start Button (appears after file selection) -->
+            <button id="start-btn" class="btn start-btn hidden" data-i18n="buttons.start">🚀 Start Processing</button>
+
+            <!-- Inline Translation Settings Panel (appears when toggle is on) -->
+            <div id="translation-panel" class="translation-panel hidden">
+                <div class="panel-header">
+                    <h3 data-i18n="translation.title">📝 Translation Instructions</h3>
+                </div>
+                <p class="panel-description" data-i18n="translation.description">
+                    Provide instructions for the translation. Include terminology, date/number formats, acronym
+                    handling, and any other preferences.
+                </p>
+
+                <div class="preset-controls"
+                    style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+                    <select id="preset-select" class="input-field" style="flex-grow: 1;">
+                        <option value="" data-i18n="translation.loadPreset">-- Load a Saved Prompt --</option>
+                    </select>
+                    <button id="save-preset-btn" class="btn secondary" style="padding: 8px 15px;"
+                        data-i18n="buttons.save">💾 Save</button>
+                    <button id="delete-preset-btn" class="btn secondary danger"
+                        style="padding: 8px 15px; margin-left: 5px; background-color: #ff4444; color: white;"
+                        data-i18n="buttons.delete">🗑️
+                        Delete</button>
+                </div>
+
+                <div class="engine-selector" style="margin-bottom: 10px;">
+                    <div class="model-label-row">
+                        <label for="translation-model-search">Translation Model (via OpenRouter):</label>
+                        <span class="model-info-icon" title="Translation Tips:&#10;&#10;• Gemini 3.1 Pro: Best overall - intelligent & accurate&#10;• Claude Sonnet 4.6: Excellent for nuance & tone&#10;• Claude Opus 4.6: Best for complex/critical translations&#10;&#10;💡 Pro Tip: Add a translation prompt with glossary terms and guidelines for MUCH better results!">ℹ️</span>
+                    </div>
+                    <div class="model-dropdown" id="translation-model-dropdown" style="margin-top: 5px;">
+                        <input type="text" id="translation-model-search" class="input-field model-search-input" placeholder="Search models..." autocomplete="off">
+                        <div class="model-dropdown-list hidden" id="translation-model-dropdown-list"></div>
+                    </div>
+                    <input type="hidden" id="translation-model-select">
+                </div>
+
+                <div class="engine-selector" id="openrouter-toggle-container" style="margin-bottom: 10px; display: none; align-items: center; gap: 10px;">
+                    <label for="openrouter-toggle" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="openrouter-toggle" style="width: 18px; height: 18px;">
+                        <span>Enable OpenRouter with Web Search</span>
+                    </label>
+                </div>
+
+                <div class="engine-selector" style="margin-bottom: 10px;">
+                    <label for="translation-temperature" style="display: flex; align-items: center; gap: 10px;">
+                        <span>🌡️ Temperature:</span>
+                        <input type="range" id="translation-temperature" min="0" max="1" step="0.1" value="0.2" style="flex: 1;">
+                        <span id="translation-temperature-value" style="min-width: 30px;">0.2</span>
+                    </label>
+                    <p class="panel-note" style="margin-top: 5px; font-size: 12px;">Lower = more precise (recommended: 0.1-0.3 for translation)</p>
+                </div>
+
+                <textarea id="translation-prompt" class="input-field prompt-textarea"
+                    data-i18n-placeholder="translation.placeholder" placeholder="Example:
+- Translate English to Colombian Spanish
+- Keep dates in DD/MM/YYYY format
+- Keep acronyms in English but expand on first use
+- Keep product names untranslated
+- Use formal 'usted' form"></textarea>
+                <p class="panel-note" data-i18n="translation.note">Leave empty to use default translation settings.</p>
+            </div>
+        </div>
+
+        <!-- Settings Modal (API Keys) -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content settings-modal-content">
+                <span class="close-settings-modal">&times;</span>
+                <h2 data-i18n="settings.title">⚙️ Settings</h2>
+                <p id="settings-welcome-msg" class="settings-welcome hidden" data-i18n="settings.welcome">Welcome! Add
+                    at least one API key to get started.</p>
+
+                <!-- UI Language Section -->
+                <div class="settings-section">
+                    <h3 data-i18n="settings.uiLanguage">🖥️ Interface Language</h3>
+                    <select id="ui-language-select" class="input-field">
+                        <option value="en">English</option>
+                        <option value="es">Español</option>
+                    </select>
+                </div>
+
+                <!-- Language Pair Section -->
+                <div class="settings-section">
+                    <h3 data-i18n="settings.languagePair">🌐 Language Pair</h3>
+                    <p class="settings-section-description" data-i18n="settings.languagePairDesc">Auto-detects direction
+                        at runtime. Specify region if needed (e.g. "Portuguese (Brazil)")</p>
+                    <div class="language-pair-row">
+                        <div class="language-input-group">
+                            <label for="language-a" data-i18n="settings.languageA">Language A:</label>
+                            <div class="language-dropdown" id="language-a-dropdown">
+                                <input type="text" id="language-a" class="input-field language-search-input" placeholder="Search or enter language..."
+                                    data-i18n-placeholder="settings.languageAPlaceholder" value="English">
+                                <div class="language-dropdown-list hidden" id="language-a-dropdown-list"></div>
+                            </div>
+                        </div>
+                        <span class="language-separator">↔</span>
+                        <div class="language-input-group">
+                            <label for="language-b" data-i18n="settings.languageB">Language B:</label>
+                            <div class="language-dropdown" id="language-b-dropdown">
+                                <input type="text" id="language-b" class="input-field language-search-input" placeholder="Search or enter language..."
+                                    data-i18n-placeholder="settings.languageBPlaceholder" value="Spanish (Colombia)">
+                                <div class="language-dropdown-list hidden" id="language-b-dropdown-list"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Keys Section -->
+                <div class="settings-section">
+                    <h3 data-i18n="settings.apiKeys">🔑 API Keys</h3>
+                </div>
+                <div class="api-key-section">
+                    <div class="api-key-row api-key-row--recommended">
+                        <label for="key-openrouter">OpenRouter <span class="recommended-badge">(Required for all models)</span></label>
+                        <div class="api-key-input-wrapper">
+                            <input type="password" id="key-openrouter" class="input-field api-key-input"
+                                placeholder="Enter API key" data-i18n-placeholder="settings.enterApiKey">
+                            <button type="button" class="toggle-visibility" data-target="key-openrouter">👁️</button>
+                            <span class="key-status" id="status-openrouter"></span>
+                        </div>
+                        <p class="api-key-help">Get your key at <a href="https://openrouter.ai/settings/keys"
+                                target="_blank">openrouter.ai</a></p>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button id="cancel-settings-btn" class="btn secondary" data-i18n="buttons.cancel">Cancel</button>
+                    <button id="save-settings-btn" class="btn primary" data-i18n="buttons.saveSettings">💾 Save
+                        Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="progress-container" class="hidden">
+            <div class="spinner"></div>
+            <p id="status-text" data-i18n="progress.initializing">Initializing...</p>
+            <div class="log-console" id="log-console">
+                <div class="log-entry" data-i18n="progress.waitingLogs">Waiting for logs...</div>
+            </div>
+        </div>
+
+        <div id="result-container" class="hidden">
+            <div class="success-icon">✅</div>
+            <h3 id="result-title" data-i18n="result.complete">Complete!</h3>
+
+            <!-- Download Links Sections -->
+            <div id="download-links">
+                <div id="converted-files-section" class="file-section hidden">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 data-i18n="result.convertedFiles" style="margin: 0;">📄 Converted Documents:</h4>
+                        <button id="download-all-converted" class="btn secondary hidden"
+                            style="padding: 6px 12px; font-size: 0.85em;" data-i18n="buttons.downloadAll">📥 Download
+                            All</button>
+                    </div>
+                    <div id="converted-files-list"></div>
+                    <p id="conversion-cost-display" class="cost-display section-cost"></p>
+                </div>
+                <div id="translated-files-section" class="file-section hidden">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 data-i18n="result.translatedFiles" style="margin: 0;">🌐 Translated Documents:</h4>
+                        <button id="download-all-translated" class="btn secondary hidden"
+                            style="padding: 6px 12px; font-size: 0.85em;" data-i18n="buttons.downloadAll">📥 Download
+                            All</button>
+                    </div>
+                    <div id="translated-files-list"></div>
+                    <p id="translation-cost-display" class="cost-display section-cost"></p>
+                </div>
+            </div>
+
+            <!-- Collapsible Logs Section - at the end, collapsed by default -->
+            <details class="result-logs-section">
+                <summary data-i18n="result.logsTitle">📋 Processing Logs</summary>
+                <div class="log-console result-logs" id="result-log-console"></div>
+            </details>
+
+            <button id="reset-btn" class="btn secondary" data-i18n="buttons.processAnother">Process Another</button>
+        </div>
+
+        <footer data-i18n="footer.poweredBy">
+            Powered by OpenRouter & Node.js
+        </footer>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>

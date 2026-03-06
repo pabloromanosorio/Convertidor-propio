@@ -1,0 +1,11 @@
+{
+  "presets": [
+    {
+      "name": "Example Preset (Delete Me)",
+      "customPromptText": "# Translation Preset Template\n\n**Direction:** [Source Language] → [Target Language]\n**Domain:** [e.g., Legal, Medical, Technical, Academic]\n\n---\n\n## DO NOT TRANSLATE\n<!-- List brand names, proper nouns, institution names -->\n- [Company Name]\n- [Product Names]\n- [Personal Names]\n\n---\n\n## ACRONYM HANDLING\n\n### Translate to Target Language\n| Source | Target |\n|--------|--------|\n| [acronym] | [translation] |\n\n### Keep in Source Language\n<!-- List acronyms that should remain unchanged -->\n- [acronym1]\n- [acronym2]\n\n---\n\n## DOMAIN GLOSSARY\n<!-- Add term pairs for your specific domain -->\n\n| Source Term | Target Term |\n|-------------|-------------|\n| [term] | [translation] |\n\n---\n\n## FORMATTING RULES\n\n### Numbers\n| Format | Source | Target |\n|--------|--------|--------|\n| Decimals | 0.05 | 0,05 |\n| Thousands | 1,509 | 1.509 |\n| Currency | $1,234.56 | $1.234,56 |\n\n### Dates\n| Source Format | Target Format |\n|---------------|---------------|\n| MM/DD/YYYY | DD/MM/YYYY |\n| December 26, 2025 | 26 de diciembre de 2025 |\n\n---\n\n## STYLE NOTES\n<!-- Formality, tone, regional preferences -->\n- Formality level: [formal/informal]\n- Regional variant: [e.g., Colombian Spanish, British English]\n- Special considerations: [any domain-specific style rules]\n\n---\n\nTranslate to [Target Language]:",
+      "glossary": {},
+      "dateFormat": "DD/MM/YYYY"
+    }
+  ],
+  "_readme": "This is a TEMPLATE file. Your actual presets are stored in user_presets/translation_presets.json (gitignored). Create presets via the UI - they will be saved privately."
+}

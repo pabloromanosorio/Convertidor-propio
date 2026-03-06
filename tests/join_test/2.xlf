@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xliff srcLang="en" version="2.1" xmlns="urn:oasis:names:tc:xliff:document:2.0">
+  <file id="1" original="page2.docx">
+    <unit id="u2">
+      <segment id="s2">
+        <source>Page 2 sentence.</source>
+      </segment>
+    </unit>
+  </file>
+</xliff>
